@@ -7,9 +7,9 @@ import sys
 
 # Import the main functions from your mini game modules.
 # Ensure each game module defines a main() function.
-from games.arena_clash import main as arena_clash_main
-from games.two_player_tetris import main as tetris_main
-from games.zombie_lane import main as zombie_lane_main  # Adjust the name if necessary
+from python.arena_clash import main as arena_clash_main
+from python.two_player_tetris import main as tetris_main
+from python.zombie_lane import main as zombie_lane_main  # Adjust the name if necessary
 
 # List of games as (display_name, main_function)
 GAMES = [

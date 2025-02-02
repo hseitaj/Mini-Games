@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Zombie Lane (JS Version)</title>
+  <style>
+    body {
+      margin: 0;
+      background-color: #1a1a1a;
+      color: #f8f9fa;
+      font-family: Arial, sans-serif;
+    }
+    canvas {
+      display: block;
+      margin: 0 auto;
+      background-color: #1a1a1a;
+    }
+  </style>
+</head>
+<body>
+<canvas id="gameCanvas" width="600" height="800"></canvas>
+<script>
+// ---------------------
+// Game Constants
+// ---------------------
+const WIDTH = 600;
+const HEIGHT = 800;
+const FPS = 60;
+
+// Lane perspective settings (for 3D style)
+const LANE_BOTTOM_WIDTH = 400;  // width at bottom
+const LANE_TOP_WIDTH = 200;     // width at top (vanishing point)
+const LANE_TOP_Y = 150;         // y-coordinate of the top of the lane
+
+// Colors (in CSS rgb format)
+const BACKGROUND_COLOR = "rgb(30,30,30)";
+const LANE_COLOR = "rgb(50,50,50)";
+const PLAYER_COLOR = "rgb(0,255,0)";
+const BULLET_COLOR = "rgb(255,255,0)";
+const ZOMBIE_COLORS = ["rgb(255,0,0)", "rgb(200,0,0)", "rgb(255,50,50)"];
+const UPGRADE_COLOR = "rgb(0,255,255)";
+const INSTR_BG_COLOR = "rgba(0,0,0,0.6)";
+
+// Speeds and timings (in pixels and milliseconds)
+const PLAYER_SPEED = 5;
+const BULLET_SPEED = 10;
+const ZOMBIE_SPEED = 3;
+const SCROLL_SPEED = 2;
+const SPAWN_ZOMBIE_INTERVAL = 1500; // ms between zombie spawns
+const SPAWN_UPGRADE_INTERVAL = 5000; // ms between upgrade spawns
+const BULLET_COOLDOWN = 300; // ms between shots
+
+// Gun appearance definitions by level
+const GUN_APPEARANCES = [
+  { color: "rgb(255,255,255)", thickness: 2 },
+  { color: "rgb(0,255,255)", thickness: 4 },
+  { color: "rgb(255,0,255)", thickness: 6 },
+  { color: "rgb(255,255,0)", thickness: 8 }
+];
+const MAX_GUN_LEVEL = GUN_APPEARANCES.length;
+
+// ---------------------
+// Utility Functions
+// ---------------------
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function getLaneBoundaries(y) {
+  // Calculate t, clamped between 0 and 1
+  let t = (y - LANE_TOP_Y) / (HEIGHT - LANE_TOP_Y);
+  t = Math.max(0, Math.min(t, 1));
+  const left_top = Math.floor((WIDTH - LANE_TOP_WIDTH) / 2);
+  const right_top = Math.floor((WIDTH + LANE_TOP_WIDTH) / 2);
+  const left_bottom = Math.floor((WIDTH - LANE_BOTTOM_WIDTH) / 2);
+  const right_bottom = Math.floor((WIDTH + LANE_BOTTOM_WIDTH) / 2);
+  const left = Math.floor(lerp(left_top, left_bottom, t));
+  const right = Math.floor(lerp(right_top, right_bottom, t));
+  return { left, right };
+}
+
+// ---------------------
+// Classes
+// ---------------------
+class Player {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.width = 40;
+    this.height = 40;
+    this.gunLevel = 0;
+    this.lastShotTime = 0;
+  }
+  move(dx) {
+    this.x += dx;
+    const boundaries = getLaneBoundaries(this.y);
+    if (this.x < boundaries.left) this.x = boundaries.left;
+    if (this.x + this.width > boundaries.right) this.x = boundaries.right - this.width;
+  }
+  shoot(currentTime) {
+    if (currentTime - this.lastShotTime >= BULLET_COOLDOWN) {
+      this.lastShotTime = currentTime;
+      const bulletX = this.x + this.width / 2;
+      const bulletY = this.y;
+      return new Bullet(bulletX, bulletY, this.gunLevel);
+    }
+    return null;
+  }
+  upgradeGun() {
+    if (this.gunLevel < MAX_GUN_LEVEL - 1) {
+      this.gunLevel += 1;
+    }
+  }
+  draw(ctx) {
+    // Draw player as a rectangle
+    ctx.fillStyle = PLAYER_COLOR;
+    ctx.fillRect(this.x, this.y, this.width, this.height);
+    // Draw gun as a line above the player
+    const gunProps = GUN_APPEARANCES[this.gunLevel];
+    ctx.strokeStyle = gunProps.color;
+    ctx.lineWidth = gunProps.thickness;
+    ctx.beginPath();
+    ctx.moveTo(this.x + this.width / 2, this.y);
+    ctx.lineTo(this.x + this.width / 2, this.y - 20);
+    ctx.stroke();
+  }
+}
+
+class Bullet {
+  constructor(x, y, gunLevel) {
+    this.x = x;
+    this.y = y;
+    this.radius = 5;
+    this.speed = BULLET_SPEED;
+    this.gunLevel = gunLevel;
+  }
+  update() {
+    this.y -= this.speed;
+  }
+  draw(ctx) {
+    ctx.fillStyle = BULLET_COLOR;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  offScreen() {
+    return this.y < 0;
+  }
+}
+
+class Zombie {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.width = 30;
+    this.height = 30;
+    this.color = ZOMBIE_COLORS[Math.floor(Math.random() * ZOMBIE_COLORS.length)];
+    this.speed = ZOMBIE_SPEED;
+  }
+  update() {
+    this.y += this.speed;
+  }
+  draw(ctx) {
+    ctx.fillStyle = this.color;
+    ctx.fillRect(this.x, this.y, this.width, this.height);
+  }
+  offScreen() {
+    return this.y > HEIGHT;
+  }
+}
+
+class Upgrade {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.size = 20;
+  }
+  update() {
+    this.y += SCROLL_SPEED;
+  }
+  draw(ctx) {
+    ctx.fillStyle = UPGRADE_COLOR;
+    ctx.fillRect(this.x, this.y, this.size, this.size);
+  }
+  offScreen() {
+    return this.y > HEIGHT;
+  }
+}
+
+// ---------------------
+// Drawing Functions
+// ---------------------
+function drawLane(ctx) {
+  // Define the trapezoid for the lane
+  const bottomLeft = { x: (WIDTH - LANE_BOTTOM_WIDTH) / 2, y: HEIGHT };
+  const bottomRight = { x: (WIDTH + LANE_BOTTOM_WIDTH) / 2, y: HEIGHT };
+  const topLeft = { x: (WIDTH - LANE_TOP_WIDTH) / 2, y: LANE_TOP_Y };
+  const topRight = { x: (WIDTH + LANE_TOP_WIDTH) / 2, y: LANE_TOP_Y };
+  ctx.fillStyle = LANE_COLOR;
+  ctx.beginPath();
+  ctx.moveTo(topLeft.x, topLeft.y);
+  ctx.lineTo(topRight.x, topRight.y);
+  ctx.lineTo(bottomRight.x, bottomRight.y);
+  ctx.lineTo(bottomLeft.x, bottomLeft.y);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawInstructions(ctx, font) {
+  // Draw a semi-transparent box in the top left corner and overlay instructions
+  ctx.fillStyle = INSTR_BG_COLOR;
+  ctx.fillRect(10, 10, 250, 100);
+  ctx.fillStyle = "white";
+  ctx.font = font;
+  const instructions = [
+    "Controls:",
+    "← / → : Move",
+    "Space: Shoot",
+    "H: Toggle Instructions"
+  ];
+  instructions.forEach((line, i) => {
+    ctx.fillText(line, 20, 30 + i * 20);
+  });
+}
+
+// ---------------------
+// Main Game Loop
+// ---------------------
+let canvas = document.getElementById("gameCanvas");
+let ctx = canvas.getContext("2d");
+
+let lastTime = 0;
+let player, bullets, zombies, upgrades;
+let score = 0;
+let zombieTimer = 0;
+let upgradeTimer = 0;
+let instructionsVisible = true;
+let gameOver = false;
+
+function initGame() {
+  // Initialize game objects
+  const initX = (WIDTH - LANE_BOTTOM_WIDTH) / 2 + (LANE_BOTTOM_WIDTH - 40) / 2;
+  player = new Player(initX, HEIGHT - 100);
+  bullets = [];
+  zombies = [];
+  upgrades = [];
+  score = 0;
+  zombieTimer = 0;
+  upgradeTimer = 0;
+  gameOver = false;
+  lastTime = performance.now();
+}
+
+function update(deltaTime) {
+  const currentTime = performance.now();
+
+  // Player movement is handled via event listeners (see below)
+
+  // Shooting is handled via event listener (space key)
+
+  // Spawn zombies
+  if (currentTime - zombieTimer > SPAWN_ZOMBIE_INTERVAL) {
+    zombieTimer = currentTime;
+    const bounds = getLaneBoundaries(LANE_TOP_Y);
+    const z_x = Math.floor(Math.random() * (bounds.right - bounds.left - 30)) + bounds.left;
+    const z_y = LANE_TOP_Y - 30; // spawn just above lane top
+    zombies.push(new Zombie(z_x, z_y));
+  }
+
+  // Spawn upgrades
+  if (currentTime - upgradeTimer > SPAWN_UPGRADE_INTERVAL) {
+    upgradeTimer = currentTime;
+    const bounds = getLaneBoundaries(LANE_TOP_Y);
+    const u_x = Math.floor(Math.random() * (bounds.right - bounds.left - 20)) + bounds.left;
+    const u_y = LANE_TOP_Y - 20;
+    upgrades.push(new Upgrade(u_x, u_y));
+  }
+
+  // Update bullets
+  bullets.forEach((bullet, i) => {
+    bullet.update();
+    if (bullet.offScreen()) {
+      bullets.splice(i, 1);
+    }
+  });
+
+  // Update zombies and check collisions
+  zombies.forEach((zombie, i) => {
+    zombie.update();
+    if (zombie.offScreen()) {
+      zombies.splice(i, 1);
+    } else {
+      // Bullet collision (simple bounding box check)
+      for (let j = 0; j < bullets.length; j++) {
+        let bullet = bullets[j];
+        if (bullet.x > zombie.x && bullet.x < zombie.x + zombie.width &&
+            bullet.y > zombie.y && bullet.y < zombie.y + zombie.height) {
+          zombies.splice(i, 1);
+          bullets.splice(j, 1);
+          score += 10;
+          break;
+        }
+      }
+      // Player collision (game over)
+      if (player.x < zombie.x + zombie.width && player.x + player.width > zombie.x &&
+          player.y < zombie.y + zombie.height && player.y + player.height > zombie.y) {
+        gameOver = true;
+      }
+    }
+  });
+
+  // Update upgrades and check for collection
+  upgrades.forEach((upgrade, i) => {
+    upgrade.update();
+    if (upgrade.offScreen()) {
+      upgrades.splice(i, 1);
+    } else if (player.x < upgrade.x + upgrade.size && player.x + player.width > upgrade.x &&
+               player.y < upgrade.y + upgrade.size && player.y + player.height > upgrade.y) {
+      player.upgradeGun();
+      upgrades.splice(i, 1);
+    }
+  });
+}
+
+function draw() {
+  // Clear the canvas
+  ctx.fillStyle = BACKGROUND_COLOR;
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+  // Draw the lane
+  drawLane(ctx);
+
+  // Draw game objects
+  bullets.forEach(bullet => bullet.draw(ctx));
+  zombies.forEach(zombie => zombie.draw(ctx));
+  upgrades.forEach(upgrade => upgrade.draw(ctx));
+  player.draw(ctx);
+
+  // Draw score
+  ctx.fillStyle = "white";
+  ctx.font = "20px Arial";
+  ctx.fillText("Score: " + score, WIDTH - 150, 30);
+
+  // Draw instructions overlay if enabled
+  if (instructionsVisible) {
+    drawInstructions(ctx, "16px Arial");
+  }
+}
+
+function gameLoop(timestamp) {
+  const deltaTime = timestamp - lastTime;
+  lastTime = timestamp;
+  if (!gameOver) {
+    update(deltaTime);
+    draw();
+    requestAnimationFrame(gameLoop);
+  } else {
+    // Display Game Over message
+    ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    ctx.fillStyle = "red";
+    ctx.font = "48px Arial";
+    ctx.fillText("GAME OVER", WIDTH / 2 - 130, HEIGHT / 2);
+    ctx.font = "24px Arial";
+    ctx.fillStyle = "white";
+    ctx.fillText("Final Score: " + score, WIDTH / 2 - 80, HEIGHT / 2 + 40);
+  }
+}
+
+initGame();
+requestAnimationFrame(gameLoop);
+
+// ---------------------
+// Event Listeners
+// ---------------------
+const keys = {};
+window.addEventListener("keydown", (e) => {
+  keys[e.code] = true;
+  // Toggle instructions with 'KeyH'
+  if (e.code === "KeyH") {
+    instructionsVisible = !instructionsVisible;
+  }
+});
+window.addEventListener("keyup", (e) => {
+  keys[e.code] = false;
+});
+
+// Handle continuous player movement and shooting in a separate interval.
+setInterval(() => {
+  if (keys["ArrowLeft"]) {
+    player.move(-PLAYER_SPEED);
+  }
+  if (keys["ArrowRight"]) {
+    player.move(PLAYER_SPEED);
+  }
+  if (keys["Space"]) {
+    let currentTime = performance.now();
+    let bullet = player.shoot(currentTime);
+    if (bullet) {
+      bullets.push(bullet);
+    }
+  }
+}, 16); // roughly 60 times per second
+</script>
+</body>
+</html>

@@ -3,11 +3,10 @@ import os
 # Ensure the repository root is in sys.path so the games package is discoverable.
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import math
 import pytest
 
 # Import for Arena Clash tests
-from games.arena_clash import (
+from python.arena_clash import (
     Hero,
     Minion,
     distance_between,
@@ -19,7 +18,7 @@ from games.arena_clash import (
 )
 
 # Import for Two-Player Tetris tests
-from games.two_player_tetris import (
+from python.two_player_tetris import (
     rotate_shape,
     normalize_shape,
     TetrisBoard,
