@@ -4,7 +4,14 @@
 [![Python Version](https://img.shields.io/badge/Python-3.10-blue.svg)](https://www.python.org/downloads/)
 [![GitHub issues](https://img.shields.io/github/issues/hseitaj/Mini-Games)](https://github.com/hseitaj/Mini-Games/issues)
 
-Welcome to **Mini Games** – your open source portal for innovative and entertaining mini games! Whether you're here to play or contribute, you'll find a collection of exciting games developed using Python and Pygame, alongside a modern web interface built with Bootstrap.
+**Visit our website: [Mini Games Portal](https://hseitaj.github.io/Mini-Games/)**
+
+---
+
+Welcome to **Mini Games** – your open source portal for innovative and entertaining mini games!  
+We bring together a diverse collection of fun and engaging games developed with Python and Pygame, all showcased on a sleek, modern web interface. Our platform is constantly evolving—check back often for the latest releases and updates.
+
+---
 
 ## Table of Contents
 
@@ -17,35 +24,35 @@ Welcome to **Mini Games** – your open source portal for innovative and enterta
 - [License](#license)
 - [Contact](#contact)
 
+---
+
 ## Introduction
 
-**Mini Games** is an open source project that brings together a variety of fun mini games under one roof. Our goal is to offer a simple, attractive, and easily accessible platform where you can download, run, and even contribute to your favorite games.
+**Mini Games** is an open source project designed to aggregate a variety of mini games under one roof. Our mission is to create a dynamic and collaborative environment where users can download, run, and contribute to their favorite games.  
+Visit our website for the latest demos and game updates: [Mini Games Portal](https://hseitaj.github.io/Mini-Games/).
 
-Our website is hosted via GitHub Pages and features a modern, responsive design inspired by popular gaming portals.
+---
 
 ## Features
 
-- **Diverse Game Collection:**  
-  Enjoy multiple games such as:
-  - **Arena Clash: Valor vs Nemesis** – A dynamic two-player arena combat game featuring heroes and minions.
-  - **Two-Player Tetris** – A competitive twist on the classic Tetris game.
-- **Modern Web Portal:**  
-  Browse game cards, view screenshots, and download source code via our sleek, responsive website powered by Bootstrap.
-- **Open Source & Community Driven:**  
-  Contribute improvements, report issues, and help shape the future of Mini Games.
-- **Comprehensive Testing:**  
-  Our games are rigorously tested with automated unit tests using pytest.
+- **Extensive Game Library:**  
+  A growing collection of games spanning multiple genres.
+- **Modern Web Interface:**  
+  Enjoy a clean, responsive website built with Bootstrap.
+- **Community Driven:**  
+  Open source and welcoming contributions from the community.
+- **Robust Testing:**  
+  All games are rigorously tested using pytest.
 
-
-[Download Code](games/two_player_tetris.py) | [Live Demo](https://hseitaj.github.io/Mini-Games/) *(if available)*
+---
 
 ## Installation
 
 ### Prerequisites
 
-- **Python 3.10+**  
-- **Git** – Install from [git-scm.com](https://git-scm.com/)
-- **Pygame & Pytest** – Install dependencies using pip:
+- **Python 3.10+**
+- **Git** – [Download Git](https://git-scm.com/)
+- **Required Packages:** Install dependencies via pip:
 
-```bash
-pip install pygame pytest
+  ```bash
+  pip install pygame pytest
