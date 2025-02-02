@@ -52,7 +52,4 @@ Visit our website for the latest demos and game updates: [Mini Games Portal](htt
 
 - **Python 3.10+**
 - **Git** – [Download Git](https://git-scm.com/)
-- **Required Packages:** Install dependencies via pip:
-
-  ```bash
-  pip install pygame pytest
+- **Required Packages:** Install dependencies via pip in the `requirements.txt`
