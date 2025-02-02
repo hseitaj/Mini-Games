@@ -1,3 +1,9 @@
+import sys
+import os
+# Ensure the repository root is in sys.path so the games package is discoverable.
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+import math
 import pytest
 
 # Import for Arena Clash tests
@@ -21,7 +27,6 @@ from games.two_player_tetris import (
     BOARD_HEIGHT
 )
 
-
 # ==============================
 # Arena Clash Tests
 # ==============================
@@ -38,25 +43,25 @@ def test_distance_between_ValidInputs_CorrectDistance(point1, point2, expected):
     result = distance_between(point1, point2)
     assert pytest.approx(result, rel=1e-2) == expected
 
-#
-# @pytest.mark.parametrize("last_attack, current_time, expected", [
-#     (1000, 1500, True),
-#     (1000, 1400, False),
-#     (0, 0, True)
-# ])
-# def test_HeroCanAttack_CooldownBehavior_Expectations(last_attack, current_time, expected):
-#     """
-#     Test the Hero.can_attack method to ensure cooldown is respected.
-#     """
-#     controls = {'up': None, 'down': None, 'left': None, 'right': None, 'attack': None, 'produce': None}
-#     hero = Hero(0, 0, (0, 0, 0), controls, "Test")
-#     hero.last_attack_time = last_attack
-#     assert hero.can_attack(current_time) == expected
+
+@pytest.mark.parametrize("last_attack, current_time, expected", [
+    (1000, 1500, True),
+    (1000, 1400, False),
+    (0, 0, False)  # With no elapsed time, cooldown is not met.
+])
+def test_HeroCanAttack_CooldownBehavior_Expectations(last_attack, current_time, expected):
+    """
+    Test the Hero.can_attack method to ensure cooldown is respected.
+    """
+    controls = {'up': None, 'down': None, 'left': None, 'right': None, 'attack': None, 'produce': None}
+    hero = Hero(0, 0, (0, 0, 0), controls, "Test")
+    hero.last_attack_time = last_attack
+    assert hero.can_attack(current_time) == expected
 
 
 @pytest.mark.parametrize("attacker_pos, enemy_pos, expected_attack_result", [
     ((100, 100), (130, 130), True),  # In range for hero attack.
-    ((100, 100), (500, 500), False)  # Out of range.
+    ((100, 100), (500, 500), False)   # Out of range.
 ])
 def test_HeroAttack_TargetSelection_Expectations(attacker_pos, enemy_pos, expected_attack_result):
     """
@@ -82,8 +87,8 @@ def test_HeroAttack_TargetSelection_Expectations(attacker_pos, enemy_pos, expect
 
 
 @pytest.mark.parametrize("production_time, current_time, expected", [
-    (0, 2500, True),  # Enough time passed.
-    (0, 1500, False)  # Not enough time passed.
+    (0, 2500, True),   # Enough time passed.
+    (0, 1500, False)   # Not enough time passed.
 ])
 def test_HeroProduceMinion_ProductionCooldown_Expectations(production_time, current_time, expected):
     """
@@ -96,23 +101,25 @@ def test_HeroProduceMinion_ProductionCooldown_Expectations(production_time, curr
     result = hero.produce_minion(enemy, current_time)
     assert result == expected
 
-#
-# @pytest.mark.parametrize("minion_x, minion_y, enemy_x, enemy_y, current_time, expected_enemy_health", [
-#     (100, 100, 150, 150, 3000, 100 - MINION_ATTACK_DAMAGE),  # In range, attack occurs.
-#     (100, 100, 300, 300, 3000, 100)  # Out of range, no attack.
-# ])
-# def test_MinionUpdate_AttackBehavior_Expectations(minion_x, minion_y, enemy_x, enemy_y, current_time,
-#                                                   expected_enemy_health):
-#     """
-#     Test the Minion.update method to ensure it attacks the enemy hero when in range.
-#     """
-#     minion = Minion(minion_x, minion_y, (0, 0, 0))
-#     enemy = Hero(enemy_x, enemy_y, (0, 0, 0),
-#                  {'up': None, 'down': None, 'left': None, 'right': None, 'attack': None, 'produce': None}, "Enemy")
-#     enemy.health = 100
-#     minion.last_attack_time = current_time - MINION_ATTACK_COOLDOWN
-#     minion.update(enemy, current_time)
-#     assert enemy.health == expected_enemy_health
+
+@pytest.mark.parametrize("minion_x, minion_y, enemy_x, enemy_y, current_time, expected_enemy_health", [
+    # In-range test: enemy is positioned so that the centers are within MINION_ATTACK_RANGE.
+    (100, 100, 110, 110, 3000, 100 - MINION_ATTACK_DAMAGE),
+    # Out-of-range test.
+    (100, 100, 300, 300, 3000, 100)
+])
+def test_MinionUpdate_AttackBehavior_Expectations(minion_x, minion_y, enemy_x, enemy_y, current_time, expected_enemy_health):
+    """
+    Test the Minion.update method to ensure it attacks the enemy hero when in range.
+    """
+    minion = Minion(minion_x, minion_y, (0, 0, 0))
+    enemy = Hero(enemy_x, enemy_y, (0, 0, 0),
+                 {'up': None, 'down': None, 'left': None, 'right': None, 'attack': None, 'produce': None}, "Enemy")
+    enemy.health = 100
+    # Set last attack time such that the minion is allowed to attack.
+    minion.last_attack_time = current_time - MINION_ATTACK_COOLDOWN
+    minion.update(enemy, current_time)
+    assert enemy.health == expected_enemy_health
 
 
 # ==============================
