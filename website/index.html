@@ -45,7 +45,7 @@
     </div>
   </nav>
 
-  <!-- Carousel Banner -->
+  <!-- Carousel Banner (Optional) -->
   <div id="bannerCarousel" class="carousel slide" data-bs-ride="carousel">
     <div class="carousel-inner">
       <div class="carousel-item active">
@@ -77,46 +77,27 @@
   <div class="container my-5" id="games">
     <h2 class="text-center mb-4">Our Games</h2>
     <div class="row row-cols-1 row-cols-md-2 g-4">
-      <!-- Zombie Lane Card (JS Version) -->
+      <!-- Zombie Lane Card -->
       <div class="col">
         <div class="card h-100">
           <img src="assets/images/zombie_lane.png" class="card-img-top" alt="Zombie Lane">
           <div class="card-body">
             <h5 class="card-title">Zombie Lane</h5>
-            <p class="card-text">
-              Play the JavaScript version of Zombie Lane right in your browser!
-            </p>
+            <p class="card-text">Battle zombies in a 3D-style lane! Choose between the JavaScript version or download the Python script.</p>
           </div>
           <div class="card-footer text-center">
-            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#zombieLaneModal">
+            <!-- "Play Online" opens the JS version in a new tab -->
+            <a href="../js/zombie_lane.html" class="btn btn-primary" target="_blank">
               Play Online
-            </button>
+            </a>
+            <!-- Download link points to the Python version -->
             <a href="../python/zombie_lane_3d.py" class="btn btn-secondary" target="_blank">
               Download Python Version
             </a>
           </div>
         </div>
       </div>
-      <!-- You can add similar cards for other games -->
-    </div>
-  </div>
-
-  <!-- Zombie Lane Modal (JS Version) -->
-  <div class="modal fade" id="zombieLaneModal" tabindex="-1" aria-labelledby="zombieLaneModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered">
-      <div class="modal-content bg-dark">
-        <div class="modal-header">
-          <h5 class="modal-title" id="zombieLaneModalLabel">Zombie Lane (JS Version)</h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <div class="modal-body">
-          <!-- Embed the JavaScript version in an iframe -->
-          <iframe src="../js/zombie_lane.html" class="w-100" style="height:500px; border:none;" title="Zombie Lane JS Demo">
-            Your browser does not support iframes.
-          </iframe>
-          <p class="mt-3 text-center">Enjoy the interactive JS demo! For the Python version, use the download link.</p>
-        </div>
-      </div>
+      <!-- Additional game cards go here (arena clash, tetris, etc.) -->
     </div>
   </div>
 
@@ -124,9 +105,8 @@
   <div class="container my-5" id="about">
     <h2>About Mini Games</h2>
     <p>
-      Mini Games is an open source project that brings together a variety of fun mini games under one roof.
-      Choose to play online (JavaScript versions) or download the Python code to run locally.
-      We are constantly updating our games—check back for new features and improvements!
+      Mini Games is an open source project bringing together a variety of fun mini games under one roof.
+      Enjoy playing in your browser, or download the Python versions to run locally and modify.
     </p>
   </div>
 
@@ -136,7 +116,7 @@
     <p>
       Have suggestions or need help? Visit our
       <a href="https://github.com/hseitaj/Mini-Games" class="text-info" target="_blank">GitHub repository</a>
-      and drop an issue or reach out directly.
+      and drop an issue, or reach out directly.
     </p>
   </div>
 
