@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Two-Player Tetris (JavaScript)</title>
+  <style>
+    /* Remove margins and disable scrolling so the canvas fills the window */
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: #000000;
+    }
+    canvas {
+      display: block;
+    }
+    #testOutput {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      padding: 5px;
+      background: rgba(255,255,255,0.9);
+      font-family: monospace;
+      max-height: 300px;
+      overflow-y: auto;
+      z-index: 100;
+    }
+  </style>
+</head>
+<body>
+  <!-- Optional div to show test results -->
+  <div id="testOutput" style="display:none;"></div>
+  <canvas id="gameCanvas"></canvas>
+  <script>
+    'use strict';
+
+    /* Global constants for the game. */
+    const BOARD_WIDTH = 10;
+    const BOARD_HEIGHT = 20;
+    const MARGIN = 20; // Margin in pixels around boards
+
+    /* Define some colors as hex strings. */
+    const BLACK   = "#000000";
+    const GRAY    = "#808080";
+    const CYAN    = "#00ffff";
+    const BLUE    = "#0000ff";
+    const ORANGE  = "#ffa500";
+    const YELLOW  = "#ffff00";
+    const GREEN   = "#00ff00";
+    const PURPLE  = "#800080";
+    const RED     = "#ff0000";
+
+    /**
+     * List of tetromino shapes and their colors.
+     * Each shape is defined as an array of [x, y] coordinates.
+     * The shapes will be normalized (shifted so that the minimum coordinate is [0,0]).
+     *
+     * @constant {Array<Object>}
+     */
+    const TETROMINO_SHAPES = [
+      { shape: [[0, 0], [1, 0], [2, 0], [3, 0]], color: CYAN },    // I piece
+      { shape: [[0, 0], [0, 1], [1, 1], [2, 1]], color: BLUE },     // J piece
+      { shape: [[2, 0], [0, 1], [1, 1], [2, 1]], color: ORANGE },   // L piece
+      { shape: [[1, 0], [2, 0], [1, 1], [2, 1]], color: YELLOW },   // O piece
+      { shape: [[1, 0], [2, 0], [0, 1], [1, 1]], color: GREEN },    // S piece
+      { shape: [[1, 0], [0, 1], [1, 1], [2, 1]], color: PURPLE },   // T piece
+      { shape: [[0, 0], [1, 0], [1, 1], [2, 1]], color: RED }       // Z piece
+    ];
+
+    /**
+     * Normalize a tetromino shape so that its coordinates start at [0, 0].
+     *
+     * @param {Array<Array<number>>} shape - Array of [x, y] coordinates.
+     * @returns {Array<Array<number>>} The normalized shape.
+     */
+    function normalizeShape(shape) {
+      const xs = shape.map(block => block[0]);
+      const ys = shape.map(block => block[1]);
+      const minX = Math.min(...xs);
+      const minY = Math.min(...ys);
+      return shape.map(block => [block[0] - minX, block[1] - minY]);
+    }
+
+    /**
+     * Rotate a shape 90 degrees clockwise within its minimal bounding box.
+     *
+     * For each block, compute new coordinates as (x, y) -> (y, (width - 1) - x)
+     * then normalize the result so that the smallest coordinate is [0, 0].
+     *
+     * @param {Array<Array<number>>} shape - Array of [x, y] coordinates.
+     * @returns {Array<Array<number>>} The rotated shape.
+     */
+    function rotateShape(shape) {
+      if (shape.length === 0) {
+        return shape;
+      }
+      const maxX = Math.max(...shape.map(block => block[0]));
+      const w = maxX + 1;
+      let newShape = shape.map(block => [block[1], (w - 1) - block[0]]);
+      newShape = normalizeShape(newShape);
+      return newShape;
+    }
+
+    /**
+     * Class representing a tetromino piece.
+     */
+    class Tetromino {
+      /**
+       * Create a tetromino.
+       * @param {Array<Array<number>>} shape - Array of [x, y] coordinates.
+       * @param {string} color - The color of the tetromino.
+       */
+      constructor(shape, color) {
+        this.shape = shape;
+        this.color = color;
+      }
+
+      /**
+       * Get the shape rotated 90 degrees clockwise.
+       *
+       * @returns {Array<Array<number>>} The rotated shape.
+       */
+      getRotatedShape() {
+        return rotateShape(this.shape);
+      }
+    }
+
+    /**
+     * Class representing a Tetris board.
+     */
+    class TetrisBoard {
+      /**
+       * Create a Tetris board.
+       * @param {number} width - The board width (in cells).
+       * @param {number} height - The board height (in cells).
+       * @param {number} [dropInterval=500] - Milliseconds between automatic drops.
+       */
+      constructor(width, height, dropInterval = 500) {
+        this.width = width;
+        this.height = height;
+        this.dropInterval = dropInterval; // in milliseconds
+        this.dropTimer = 0;
+        this.score = 0;
+        this.gameOver = false;
+        this.grid = [];
+        for (let y = 0; y < height; y++) {
+          this.grid[y] = [];
+          for (let x = 0; x < width; x++) {
+            this.grid[y][x] = null;
+          }
+        }
+        this.currentPiece = null;
+        this.currentX = 0;
+        this.currentY = 0;
+        this.spawnPiece();
+      }
+
+      /**
+       * Get the width of a tetromino shape.
+       *
+       * @param {Array<Array<number>>} shape - Array of [x, y] coordinates.
+       * @returns {number} The width in cells.
+       */
+      getPieceWidth(shape) {
+        return Math.max(...shape.map(block => block[0])) + 1;
+      }
+
+      /**
+       * Check if a piece with a given shape can be placed at the board position (x, y).
+       *
+       * @param {Array<Array<number>>} shape - The tetromino shape.
+       * @param {number} x - The x-coordinate on the board.
+       * @param {number} y - The y-coordinate on the board.
+       * @returns {boolean} True if placement is valid; false otherwise.
+       */
+      canMove(shape, x, y) {
+        for (const block of shape) {
+          const newX = x + block[0];
+          const newY = y + block[1];
+          if (newX < 0 || newX >= this.width || newY < 0 || newY >= this.height) {
+            return false;
+          }
+          if (this.grid[newY][newX] !== null) {
+            return false;
+          }
+        }
+        return true;
+      }
+
+      /**
+       * Spawn a new tetromino piece at the top of the board.
+       * If the new piece cannot be placed, mark the board as game over.
+       */
+      spawnPiece() {
+        const index = Math.floor(Math.random() * TETROMINO_SHAPES.length);
+        const { shape, color } = TETROMINO_SHAPES[index];
+        const normalizedShape = normalizeShape(shape);
+        this.currentPiece = new Tetromino(normalizedShape, color);
+        this.currentX = Math.floor((this.width - this.getPieceWidth(this.currentPiece.shape)) / 2);
+        this.currentY = 0;
+        if (!this.canMove(this.currentPiece.shape, this.currentX, this.currentY)) {
+          this.gameOver = true;
+        }
+      }
+
+      /**
+       * Attempt to move the current piece by (dx, dy).
+       *
+       * @param {number} dx - Change in x-direction.
+       * @param {number} dy - Change in y-direction.
+       * @returns {boolean} True if the piece was moved; false otherwise.
+       */
+      movePiece(dx, dy) {
+        const newX = this.currentX + dx;
+        const newY = this.currentY + dy;
+        if (this.canMove(this.currentPiece.shape, newX, newY)) {
+          this.currentX = newX;
+          this.currentY = newY;
+          return true;
+        }
+        return false;
+      }
+
+      /**
+       * Attempt to rotate the current piece.
+       *
+       * @returns {boolean} True if rotation succeeded; false otherwise.
+       */
+      rotatePiece() {
+        const newShape = this.currentPiece.getRotatedShape();
+        if (this.canMove(newShape, this.currentX, this.currentY)) {
+          this.currentPiece.shape = newShape;
+          return true;
+        }
+        return false;
+      }
+
+      /**
+       * Drop the current piece by one row.
+       * If the piece cannot move down, lock it in place.
+       */
+      dropPiece() {
+        if (!this.movePiece(0, 1)) {
+          this.lockPiece();
+        }
+      }
+
+      /**
+       * Hard drop the current piece to the lowest possible position.
+       */
+      hardDrop() {
+        while (this.movePiece(0, 1)) {
+          // keep moving down
+        }
+        this.lockPiece();
+      }
+
+      /**
+       * Lock the current piece in place on the board, clear any full lines,
+       * and then spawn a new piece.
+       */
+      lockPiece() {
+        for (const block of this.currentPiece.shape) {
+          const x = this.currentX + block[0];
+          const y = this.currentY + block[1];
+          if (y >= 0 && y < this.height && x >= 0 && x < this.width) {
+            this.grid[y][x] = this.currentPiece.color;
+          }
+        }
+        this.clearLines();
+        this.spawnPiece();
+      }
+
+      /**
+       * Check for and clear completed lines on the board.
+       * Increase the score by the number of lines cleared.
+       */
+      clearLines() {
+        let newGrid = this.grid.filter(row => row.some(cell => cell === null));
+        const linesCleared = this.height - newGrid.length;
+        for (let i = 0; i < linesCleared; i++) {
+          let newRow = new Array(this.width).fill(null);
+          newGrid.unshift(newRow);
+        }
+        this.grid = newGrid;
+        this.score += linesCleared;
+      }
+
+      /**
+       * Update the board’s state based on the elapsed time.
+       *
+       * @param {number} dt - Milliseconds elapsed since the last update.
+       */
+      update(dt) {
+        this.dropTimer += dt;
+        if (this.dropTimer > this.dropInterval) {
+          this.dropTimer = 0;
+          if (!this.gameOver) {
+            this.dropPiece();
+          }
+        }
+      }
+
+      /**
+       * Draw the board grid and the current piece on the given canvas context.
+       *
+       * @param {CanvasRenderingContext2D} ctx - The canvas rendering context.
+       * @param {number} offsetX - The x-offset (in pixels) for drawing.
+       * @param {number} offsetY - The y-offset (in pixels) for drawing.
+       */
+      draw(ctx, offsetX, offsetY) {
+        // Draw fixed blocks.
+        for (let y = 0; y < this.height; y++) {
+          for (let x = 0; x < this.width; x++) {
+            const cell = this.grid[y][x];
+            const posX = offsetX + x * cellSize;
+            const posY = offsetY + y * cellSize;
+            if (cell === null) {
+              ctx.strokeStyle = GRAY;
+              ctx.strokeRect(posX, posY, cellSize, cellSize);
+            } else {
+              ctx.fillStyle = cell;
+              ctx.fillRect(posX, posY, cellSize, cellSize);
+            }
+          }
+        }
+        // Draw the falling piece.
+        if (!this.gameOver) {
+          for (const block of this.currentPiece.shape) {
+            const x = this.currentX + block[0];
+            const y = this.currentY + block[1];
+            if (y >= 0) {
+              ctx.fillStyle = this.currentPiece.color;
+              ctx.fillRect(offsetX + x * cellSize, offsetY + y * cellSize, cellSize, cellSize);
+            }
+          }
+        }
+        // Draw "Game Over" text if needed.
+        if (this.gameOver) {
+          ctx.font = "24px Arial";
+          ctx.fillStyle = RED;
+          ctx.fillText("Game Over", offsetX + 10, offsetY + (this.height * cellSize) / 2);
+        }
+      }
+    }
+
+    /* Global variables for canvas and game state. */
+    let canvas, ctx;
+    let board1, board2;
+    let lastTime = 0;
+    let cellSize = 30;  // Will be recalculated on resize
+
+    /**
+     * Resize the canvas to match the browser window and compute an appropriate cell size.
+     */
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      // Compute cellSize so that two boards (with margins) fit inside the window.
+      cellSize = Math.floor(Math.min(
+        (canvas.width - MARGIN * 3) / (BOARD_WIDTH * 2),
+        (canvas.height - MARGIN * 2) / BOARD_HEIGHT
+      ));
+    }
+
+    /**
+     * Main game loop.
+     *
+     * @param {number} timestamp - The current time (ms).
+     */
+    function gameLoop(timestamp) {
+      const dt = timestamp - lastTime;
+      lastTime = timestamp;
+      update(dt);
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    /**
+     * Update both Tetris boards.
+     *
+     * @param {number} dt - Elapsed time in milliseconds.
+     */
+    function update(dt) {
+      board1.update(dt);
+      board2.update(dt);
+    }
+
+    /**
+     * Draw both Tetris boards on the canvas.
+     */
+    function draw() {
+      ctx.fillStyle = BLACK;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // Draw board1 on the left.
+      board1.draw(ctx, MARGIN, MARGIN);
+      // Draw board2 on the right.
+      const offsetX = BOARD_WIDTH * cellSize + MARGIN * 2;
+      board2.draw(ctx, offsetX, MARGIN);
+    }
+
+    /**
+     * Handle keydown events for both players.
+     *
+     * Player 1:
+     *   - ArrowLeft: move left
+     *   - ArrowRight: move right
+     *   - ArrowUp: rotate
+     *   - ArrowDown: soft drop
+     *   - Space: hard drop
+     *
+     * Player 2:
+     *   - KeyA: move left
+     *   - KeyD: move right
+     *   - KeyW: rotate
+     *   - KeyS: soft drop
+     *   - KeyQ: hard drop
+     *
+     * @param {KeyboardEvent} e - The keyboard event.
+     */
+    function handleKeyDown(e) {
+      switch(e.code) {
+        // --- Player 1 Controls ---
+        case "ArrowLeft":
+          board1.movePiece(-1, 0);
+          break;
+        case "ArrowRight":
+          board1.movePiece(1, 0);
+          break;
+        case "ArrowUp":
+          board1.rotatePiece();
+          break;
+        case "ArrowDown":
+          board1.movePiece(0, 1);
+          break;
+        case "Space":
+          board1.hardDrop();
+          break;
+        // --- Player 2 Controls ---
+        case "KeyA":
+          board2.movePiece(-1, 0);
+          break;
+        case "KeyD":
+          board2.movePiece(1, 0);
+          break;
+        case "KeyW":
+          board2.rotatePiece();
+          break;
+        case "KeyS":
+          board2.movePiece(0, 1);
+          break;
+        case "KeyQ":
+          board2.hardDrop();
+          break;
+        default:
+          break;
+      }
+    }
+
+    /**
+     * Run simple test cases for normalizeShape and rotateShape.
+     * Test results are logged to the console and (if enabled) to a page element.
+     */
+    function runTests() {
+      const results = [];
+      function assertEqual(testName, actual, expected) {
+        const sortFn = (a, b) => a[0] - b[0] || a[1] - b[1];
+        const actualSorted = actual.slice().sort(sortFn);
+        const expectedSorted = expected.slice().sort(sortFn);
+        const passed = JSON.stringify(actualSorted) === JSON.stringify(expectedSorted);
+        const msg = `${testName}: ${passed ? "PASS" : "FAIL"}`;
+        results.push(msg);
+        console.log(msg);
+      }
+      // Test rotateShape: I piece horizontal becomes vertical.
+      assertEqual(
+        "rotateShape_I_piece",
+        rotateShape([[0,0],[1,0],[2,0],[3,0]]),
+        [[0,0],[0,1],[0,2],[0,3]]
+      );
+      // Test rotateShape: J piece rotation.
+      assertEqual(
+        "rotateShape_J_piece",
+        rotateShape([[0,0],[0,1],[1,1],[2,1]]),
+        [[1,0],[1,1],[1,2],[0,2]]
+      );
+      // Test normalizeShape.
+      assertEqual(
+        "normalizeShape_O_piece",
+        normalizeShape([[1,0],[2,0],[1,1],[2,1]]),
+        [[0,0],[1,0],[0,1],[1,1]]
+      );
+      assertEqual(
+        "normalizeShape_offset",
+        normalizeShape([[2,1],[3,1],[2,2],[3,2]]),
+        [[0,0],[1,0],[0,1],[1,1]]
+      );
+      // Optionally, display results in the #testOutput element.
+      const testDiv = document.getElementById("testOutput");
+      if (testDiv) {
+        testDiv.style.display = "block";
+        testDiv.innerHTML = results.join("<br>");
+      }
+    }
+
+    // --- Initialization ---
+    window.addEventListener("load", () => {
+      canvas = document.getElementById("gameCanvas");
+      ctx = canvas.getContext("2d");
+      resizeCanvas();
+      // Create two boards.
+      board1 = new TetrisBoard(BOARD_WIDTH, BOARD_HEIGHT);
+      board2 = new TetrisBoard(BOARD_WIDTH, BOARD_HEIGHT);
+      lastTime = performance.now();
+      // Start the game loop.
+      requestAnimationFrame(gameLoop);
+      // Add event listener for key controls.
+      window.addEventListener("keydown", handleKeyDown);
+      // Optionally, run tests if the URL has ?runTests
+      if (window.location.search.indexOf("runTests") !== -1) {
+        runTests();
+      }
+    });
+
+    window.addEventListener("resize", () => {
+      resizeCanvas();
+    });
+  </script>
+</body>
+</html>
