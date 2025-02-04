@@ -8,7 +8,7 @@
   <style>
     body {
       background-color: #121212;
-      color: #f8f9fa;
+      color: #e0e0e0; /* Changed text color from white to light gray */
     }
     .navbar, .footer {
       background-color: #1f1f1f;
@@ -18,11 +18,24 @@
       border: none;
     }
     .card-title, .card-text {
-      color: #f8f9fa;
+      color: #e0e0e0; /* Changed text color from white to light gray */
     }
     .carousel-item img {
       height: 450px;
       object-fit: cover;
+    }
+    .card-img-top {
+      height: 200px;
+      object-fit: cover;
+    }
+    .carousel-caption {
+      text-align: center;
+    }
+    .h2, h2{
+      color: red;
+    }
+    .p, p {
+      color: blue;
     }
   </style>
 </head>
@@ -51,7 +64,7 @@
       <div class="carousel-item active">
         <img src="assets/images/arena_clash.png" class="d-block w-100" alt="Arena Clash">
         <div class="carousel-caption d-none d-md-block">
-          <h2>Arena Clash: Valor vs Nemesis</h2>
+          <h2>Arena Clash</h2>
           <p>Experience epic battles in the arena!</p>
         </div>
       </div>
@@ -97,13 +110,32 @@
           </div>
         </div>
       </div>
-      <!-- Additional game cards go here (arena clash, tetris, etc.) -->
+      <!-- Two-Player Tetris Card -->
+      <div class="col">
+        <div class="card h-100">
+          <img src="assets/images/two_player_tetris.png" class="card-img-top" alt="Two-Player Tetris">
+          <div class="card-body">
+            <h5 class="card-title">Two-Player Tetris</h5>
+            <p class="card-text">Challenge your friend to a competitive game of Tetris!</p>
+          </div>
+          <div class="card-footer text-center">
+            <!-- "Play Online" opens the JS version in a new tab -->
+            <a href="../js/tetris.html" class="btn btn-primary" target="_blank">
+              Play Online
+            </a>
+            <!-- Download link points to the Python version -->
+            <a href="../python/two_player_tetris.py" class="btn btn-secondary" target="_blank">
+              Download Python Version
+            </a>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
   <!-- About Section -->
   <div class="container my-5" id="about">
-    <h2>About Mini Games</h2>
+    <h2 class="text-center">About Mini Games</h2>
     <p>
       Mini Games is an open source project bringing together a variety of fun mini games under one roof.
       Enjoy playing in your browser, or download the Python versions to run locally and modify.
@@ -112,7 +144,7 @@
 
   <!-- Contact Section -->
   <div class="container my-5" id="contact">
-    <h2>Contact Us</h2>
+    <h2 class="text-center">Contact Us</h2>
     <p>
       Have suggestions or need help? Visit our
       <a href="https://github.com/hseitaj/Mini-Games" class="text-info" target="_blank">GitHub repository</a>
