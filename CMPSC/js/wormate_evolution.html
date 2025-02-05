@@ -16,35 +16,25 @@
       display: block;
       background-color: #111;
     }
-    .ui {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      z-index: 10;
-      font-size: 18px;
-    }
-    /* Single merged progress bar */
+    /* Merged progress bar at the very top */
     #progressContainer {
       position: absolute;
-      top: 40px;
-      left: 10px;
-      width: 300px;
-      height: 30px;
-      border: 2px solid #eee;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 40px;
+      border-bottom: 2px solid #eee;
       background-color: #333;
       z-index: 10;
-      border-radius: 4px;
-      overflow: hidden;
     }
     #progressBar {
       height: 100%;
       background-color: #0f0;
       width: 0%;
-      border-radius: 4px;
       text-align: center;
-      line-height: 30px;
+      line-height: 40px;
       font-weight: bold;
-      color: #000;
+      color: #fff;
     }
     .game-over {
       position: absolute;
@@ -86,6 +76,16 @@
       font-size: 16px;
       cursor: pointer;
     }
+    /* Milestone celebration style */
+    .milestoneText {
+      position: absolute;
+      font-size: 36px;
+      font-weight: bold;
+      color: #ff0;
+      text-shadow: 2px 2px 4px #000;
+      z-index: 15;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
@@ -100,12 +100,11 @@
     </form>
   </div>
 
-  <!-- UI Elements -->
-  <div id="progressContainer" class="ui">
+  <!-- Merged Progress Bar -->
+  <div id="progressContainer">
     <div id="progressBar">Level 1: 0%</div>
   </div>
   <div class="game-over" id="gameOver">Game Over!</div>
-
   <!-- Canvas -->
   <canvas id="gameCanvas"></canvas>
 
@@ -115,69 +114,49 @@
     /**************************************
      * Configuration and Global Variables *
      **************************************/
-    // Map settings (a huge map relative to the viewport)
     const MAP_WIDTH = 3000;
     const MAP_HEIGHT = 3000;
     let VIEWPORT_WIDTH = window.innerWidth;
     let VIEWPORT_HEIGHT = window.innerHeight;
-
-    // Game update settings
     const FPS = 60;
     const DT = 1000 / FPS;
 
-    // Player (Mentagon) settings
     const INITIAL_LEVEL = 1;
-    const INITIAL_FOOD_REQUIRED = 10; // Level 1 requires 10 food points
-    const LEVEL_INCREMENT = 10;       // Each level requires 10 more food
-    const BASE_RADIUS = 20;           // Base radius at level 1
-    const GROWTH_PER_FOOD = 0.5;        // Increase in radius per food eaten
-    const BASE_SPEED = 3;             // Base movement speed (pixels per frame)
-    const SPEED_DECREMENT = 0.2;      // Speed decreases per level (min speed 0.5)
-    const MAX_LEVEL = 20;           // Up to level 20, then extra angles are added per level
+    const INITIAL_FOOD_REQUIRED = 10;
+    const LEVEL_INCREMENT = 10;
+    const BASE_RADIUS = 20;
+    const GROWTH_PER_FOOD = 0.5;
+    const BASE_SPEED = 3;
+    const SPEED_DECREMENT = 0.2;
+    const MAX_LEVEL = 20;
 
-    // Bot settings
     const NUM_BOTS = 5;
     const BOT_MIN_LEVEL = 1;
     const BOT_MAX_LEVEL = 5;
     const BOT_SPEED = 1.5;
 
-    // Food settings
-    const NUM_FOOD = 300;           // Increased number of regular food items
+    const NUM_FOOD = 300;
     const FOOD_MIN_RADIUS = 2;
     const FOOD_MAX_RADIUS = 6;
 
-    // Big Food settings
-    const NUM_BIG_FOOD = 30;        // More big food items
-    const BIG_FOOD_RADIUS = 15;     // Big food is larger
+    const NUM_BIG_FOOD = 30;
+    const BIG_FOOD_RADIUS = 15;
     function generateBigFoodMinLevel() {
       return Math.floor(randomRange(2, 6));
     }
-    const BIG_FOOD_VALUE = 5;       // Eating a big food gives 5 food points
+    const BIG_FOOD_VALUE = 5;
 
-    // Island (obstacle) settings
-    const NUM_ISLANDS = 20;
-    const ISLAND_MIN_SIZE = 50;
-    const ISLAND_MAX_SIZE = 150;
+    const NUM_COSMO = 20;
 
-    // Global arrays for game objects
     let foodItems = [];
     let bigFoodItems = [];
     let botPlayers = [];
-    let islands = [];
-
-    // The player object will be created after login.
+    let cosmoObjects = [];
     let player = null;
-
-    // Camera offset for scrolling
     let cameraOffset = { x: 0, y: 0 };
-
-    // Key state tracking
     const keys = {};
-
-    // Game over flag
     let gameOver = false;
 
-    // Get canvas and UI elements
     const canvas = document.getElementById("gameCanvas");
     const ctx = canvas.getContext("2d");
     canvas.width = VIEWPORT_WIDTH;
@@ -203,11 +182,6 @@
     /**********************
      * Game Object Classes*
      **********************/
-    /**
-     * Class representing a Mentagon (player or bot).
-     * The shape is a regular polygon with number of sides = level + 2.
-     * After max level is reached, extra sides are added (one extra side per level above MAX_LEVEL).
-     */
     class Mentagon {
       constructor(username, x, y, level, color, isBot=false) {
         this.username = username;
@@ -219,7 +193,6 @@
         this.color = color;
         this.isBot = isBot;
         this.radius = BASE_RADIUS + (level - 1) * 3;
-        // Calculate sides: normally level+2; if level > MAX_LEVEL add extra side for each level above.
         this.sides = (level <= MAX_LEVEL ? level + 2 : MAX_LEVEL + 2 + (level - MAX_LEVEL));
         if (this.isBot) {
           this.vx = randomRange(-BOT_SPEED, BOT_SPEED);
@@ -227,6 +200,7 @@
         }
       }
       levelUp() {
+        let leveledUp = false;
         while (this.foodEaten >= this.foodRequired) {
           this.foodEaten -= this.foodRequired;
           this.level++;
@@ -237,12 +211,15 @@
           } else {
             this.sides = MAX_LEVEL + 2 + (this.level - MAX_LEVEL);
           }
+          leveledUp = true;
+        }
+        if (leveledUp && !this.isBot) {
+          createMilestoneText(this.level);
         }
       }
       draw(context) {
         context.save();
         context.translate(this.x, this.y);
-        // Rotate by an angle based on level for variety.
         const angle = (this.level * Math.PI) / 18;
         context.rotate(angle);
         context.beginPath();
@@ -284,26 +261,11 @@
           newX += this.vx;
           newY += this.vy;
         }
-        // Prevent moving into islands.
-        let collision = false;
-        for (let island of islands) {
-          if (circleRectCollision(newX, newY, this.radius, island.x, island.y, island.w, island.h)) {
-            collision = true;
-            break;
-          }
-        }
-        if (!collision) {
-          this.x = Math.max(0, Math.min(newX, MAP_WIDTH));
-          this.y = Math.max(0, Math.min(newY, MAP_HEIGHT));
-        }
+        this.x = Math.max(0, Math.min(newX, MAP_WIDTH));
+        this.y = Math.max(0, Math.min(newY, MAP_HEIGHT));
       }
     }
 
-    /**
-     * Class representing a food item.
-     * Big food items have a minLevel requirement and higher food value.
-     * Food items now animate a suction effect when being eaten.
-     */
     class Food {
       constructor(x, y, radius, isBig=false) {
         this.x = x;
@@ -313,22 +275,18 @@
         if (this.isBig) {
           this.minLevel = generateBigFoodMinLevel();
           this.foodValue = BIG_FOOD_VALUE;
-          this.color = "#f80"; // Big food color
+          this.color = "#f80";
         } else {
           this.foodValue = 1;
           this.color = (Math.random() < 0.5) ? "#0f0" : "#ff0";
         }
-        // For suction animation:
         this.isBeingEaten = false;
-        this.eatProgress = 0; // 0 to 1, 1 = fully eaten
+        this.eatProgress = 0;
       }
       updateSuction(targetX, targetY) {
-        // Increase progress and move towards target.
-        this.eatProgress += 0.05; // Adjust speed of suction here.
-        // Interpolate position toward target.
+        this.eatProgress += 0.05;
         this.x += (targetX - this.x) * 0.1;
         this.y += (targetY - this.y) * 0.1;
-        // Shrink gradually.
         this.radius *= 0.95;
       }
       draw(context) {
@@ -339,27 +297,122 @@
       }
     }
 
-    /**
-     * Class representing an Island (obstacle).
-     */
-    class Island {
-      constructor(x, y, w, h) {
+    class CosmoObject {
+      constructor(x, y, type) {
         this.x = x;
         this.y = y;
-        this.w = w;
-        this.h = h;
+        this.type = type;
+        this.size = randomRange(30, 80);
       }
       draw(context) {
-        context.fillStyle = "#555";
-        context.fillRect(this.x, this.y, this.w, this.h);
-        context.strokeStyle = "#333";
-        context.strokeRect(this.x, this.y, this.w, this.h);
+        context.save();
+        context.translate(this.x, this.y);
+        switch(this.type) {
+          case "plant":
+            context.fillStyle = "#0a0";
+            context.beginPath();
+            context.arc(0, 0, this.size/2, 0, Math.PI*2);
+            context.fill();
+            break;
+          case "moon":
+            context.fillStyle = "#ccc";
+            context.beginPath();
+            context.arc(0, 0, this.size/2, 0, Math.PI*2);
+            context.fill();
+            break;
+          case "fire":
+            context.fillStyle = "#f00";
+            drawStar(context, 0, 0, this.size/4, this.size/2, 5);
+            break;
+          case "water":
+            context.fillStyle = "#00f";
+            context.beginPath();
+            context.arc(0, 0, this.size/2, 0, Math.PI*2);
+            context.fill();
+            break;
+          case "ice":
+            context.fillStyle = "#0ff";
+            drawPolygon(context, 6, this.size/2);
+            break;
+          case "mineral":
+            context.fillStyle = "#888";
+            drawDiamond(context, this.size/2);
+            break;
+          default:
+            context.fillStyle = "#fff";
+            context.fillRect(-this.size/2, -this.size/2, this.size, this.size);
+        }
+        context.restore();
+      }
+      applyEffect(player, currentTime) {
+        if (distance(this.x, this.y, player.x, player.y) < (this.size/2 + player.radius)) {
+          switch(this.type) {
+            case "plant":
+              player.speedModifier = 1;
+              player.speedBoostUntil = currentTime + 5000;
+              break;
+            case "moon":
+              player.foodEaten += 2;
+              break;
+            case "fire":
+              player.foodEaten = Math.max(0, player.foodEaten - 2);
+              break;
+            case "water":
+              player.speedModifier = -1;
+              player.slowUntil = currentTime + 5000;
+              break;
+            case "ice":
+              player.freezeUntil = currentTime + 2000;
+              break;
+            case "mineral":
+              player.foodEaten += 5;
+              break;
+          }
+          return true;
+        }
+        return false;
       }
     }
 
-    /****************************
+    function drawStar(ctx, cx, cy, innerRadius, outerRadius, points) {
+      ctx.beginPath();
+      let angle = Math.PI / points;
+      for (let i = 0; i < 2 * points; i++) {
+        let r = (i % 2 === 0) ? outerRadius : innerRadius;
+        let a = i * angle;
+        let x = cx + Math.cos(a) * r;
+        let y = cy + Math.sin(a) * r;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+    function drawPolygon(ctx, sides, radius) {
+      ctx.beginPath();
+      for (let i = 0; i < sides; i++) {
+        let theta = (i / sides) * 2 * Math.PI;
+        let x = radius * Math.cos(theta);
+        let y = radius * Math.sin(theta);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+    function drawDiamond(ctx, halfSize) {
+      ctx.beginPath();
+      ctx.moveTo(0, -halfSize);
+      ctx.lineTo(halfSize, 0);
+      ctx.lineTo(0, halfSize);
+      ctx.lineTo(-halfSize, 0);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    /*********************
      * Game Initialization *
-     ****************************/
+     *********************/
     function initFood() {
       foodItems = [];
       for (let i = 0; i < NUM_FOOD; i++) {
@@ -375,14 +428,14 @@
         bigFoodItems.push(new Food(x, y, BIG_FOOD_RADIUS, true));
       }
     }
-    function initIslands() {
-      islands = [];
-      for (let i = 0; i < NUM_ISLANDS; i++) {
-        const w = randomRange(ISLAND_MIN_SIZE, ISLAND_MAX_SIZE);
-        const h = randomRange(ISLAND_MIN_SIZE, ISLAND_MAX_SIZE);
-        const x = randomRange(0, MAP_WIDTH - w);
-        const y = randomRange(0, MAP_HEIGHT - h);
-        islands.push(new Island(x, y, w, h));
+    function initCosmoObjects() {
+      cosmoObjects = [];
+      const types = ["plant", "moon", "fire", "water", "ice", "mineral"];
+      for (let i = 0; i < NUM_COSMO; i++) {
+        let type = types[Math.floor(randomRange(0, types.length))];
+        let x = randomRange(0, MAP_WIDTH);
+        let y = randomRange(0, MAP_HEIGHT);
+        cosmoObjects.push(new CosmoObject(x, y, type));
       }
     }
     function initBots() {
@@ -401,33 +454,53 @@
       const x = randomRange(0, MAP_WIDTH);
       const y = randomRange(0, MAP_HEIGHT);
       player = new Mentagon(username, x, y, INITIAL_LEVEL, "#007bff");
+      player.speedModifier = 0;
+      player.freezeUntil = 0;
+      player.speedBoostUntil = 0;
+      player.slowUntil = 0;
     }
-
-    /**
-     * Update camera to center on the player.
-     */
     function updateCamera() {
       cameraOffset.x = player.x - VIEWPORT_WIDTH / 2;
       cameraOffset.y = player.y - VIEWPORT_HEIGHT / 2;
       cameraOffset.x = Math.max(0, Math.min(cameraOffset.x, MAP_WIDTH - VIEWPORT_WIDTH));
       cameraOffset.y = Math.max(0, Math.min(cameraOffset.y, MAP_HEIGHT - VIEWPORT_HEIGHT));
     }
+    function createMilestoneText(level) {
+      let div = document.createElement("div");
+      div.className = "milestoneText";
+      div.innerText = "Milestone! Level " + level;
+      document.body.appendChild(div);
+      // Position the text at the player's viewport position.
+      let px = player.x - cameraOffset.x;
+      let py = player.y - cameraOffset.y;
+      div.style.left = px + "px";
+      div.style.top = py + "px";
+      setTimeout(() => { div.style.opacity = "0"; }, 1000);
+      setTimeout(() => { document.body.removeChild(div); }, 1500);
+    }
 
     /***********************
      * Main Game Loop *
      ***********************/
     function gameLoop() {
-      // Update positions.
-      player.update(keys);
+      let currentTime = performance.now();
+      if (currentTime > player.speedBoostUntil && player.speedModifier > 0) {
+        player.speedModifier = 0;
+      }
+      if (currentTime > player.slowUntil && player.speedModifier < 0) {
+        player.speedModifier = 0;
+      }
+      if (currentTime < player.freezeUntil) {
+        // Player frozen: skip movement.
+      } else {
+        player.update(keys);
+      }
       for (let bot of botPlayers) {
         bot.update();
       }
-      // Process food consumption for player.
-      // For regular food:
       for (let i = foodItems.length - 1; i >= 0; i--) {
         let food = foodItems[i];
         if (player.collidesWithFood(food) && player.radius > food.radius) {
-          // Instead of immediate removal, animate suction.
           food.isBeingEaten = true;
         }
         if (food.isBeingEaten) {
@@ -435,7 +508,6 @@
           if (food.eatProgress >= 1) {
             foodItems.splice(i, 1);
             player.foodEaten += food.foodValue;
-            // Spawn new regular food.
             const x = randomRange(0, MAP_WIDTH);
             const y = randomRange(0, MAP_HEIGHT);
             const radius = randomRange(FOOD_MIN_RADIUS, FOOD_MAX_RADIUS);
@@ -443,7 +515,6 @@
           }
         }
       }
-      // For big food:
       for (let i = bigFoodItems.length - 1; i >= 0; i--) {
         let food = bigFoodItems[i];
         if (player.collidesWithFood(food) && player.radius > food.radius && player.level >= food.minLevel) {
@@ -460,7 +531,6 @@
           }
         }
       }
-      // Bots eating food.
       for (let bot of botPlayers) {
         for (let i = foodItems.length - 1; i >= 0; i--) {
           let food = foodItems[i];
@@ -484,13 +554,10 @@
           }
         }
       }
-      // Process collisions between player and bots.
       for (let bot of botPlayers) {
         if (player.collidesWithMentagon(bot)) {
           if (player.radius > bot.radius) {
-            // Animate enemy suction if desired (for brevity, we instantly award food).
             player.foodEaten += bot.level * 3;
-            // Respawn bot.
             bot.x = randomRange(0, MAP_WIDTH);
             bot.y = randomRange(0, MAP_HEIGHT);
             bot.level = Math.floor(randomRange(BOT_MIN_LEVEL, BOT_MAX_LEVEL + 1));
@@ -501,7 +568,6 @@
           }
         }
       }
-      // Level up player and bots.
       player.levelUp();
       for (let bot of botPlayers) {
         if (bot.foodEaten >= INITIAL_FOOD_REQUIRED) {
@@ -511,36 +577,37 @@
           bot.sides = bot.level + 2;
         }
       }
+      for (let i = cosmoObjects.length - 1; i >= 0; i--) {
+        let obj = cosmoObjects[i];
+        if (obj.applyEffect(player, currentTime)) {
+          cosmoObjects.splice(i, 1);
+          const types = ["plant", "moon", "fire", "water", "ice", "mineral"];
+          let type = types[Math.floor(randomRange(0, types.length))];
+          cosmoObjects.push(new CosmoObject(randomRange(0, MAP_WIDTH), randomRange(0, MAP_HEIGHT), type));
+        }
+      }
       updateCamera();
-      // Render scene.
       ctx.save();
       ctx.translate(-cameraOffset.x, -cameraOffset.y);
       ctx.fillStyle = "#222";
       ctx.fillRect(0, 0, MAP_WIDTH, MAP_HEIGHT);
-      // Draw islands.
-      for (let island of islands) {
-        island.draw(ctx);
+      for (let obj of cosmoObjects) {
+        obj.draw(ctx);
       }
-      // Draw food.
       for (let food of foodItems) {
         food.draw(ctx);
       }
       for (let food of bigFoodItems) {
         food.draw(ctx);
       }
-      // Draw bots.
       for (let bot of botPlayers) {
         bot.draw(ctx);
       }
-      // Draw player.
       player.draw(ctx);
       ctx.restore();
-
-      // Update merged progress bar.
       let progressPercent = Math.min(100, (player.foodEaten / player.foodRequired) * 100);
       progressBar.style.width = progressPercent + "%";
       progressBar.innerText = "Level " + player.level + ": " + Math.floor(progressPercent) + "%";
-
       if (gameOver) {
         gameOverDiv.style.display = "block";
       } else {
@@ -573,19 +640,21 @@
     });
 
     /*********************
-     * Login and Initialization *
+     * Initialization and Login *
      *********************/
-    document.getElementById("loginForm").addEventListener("submit", function(e) {
-      e.preventDefault();
-      const username = document.getElementById("usernameInput").value.trim();
-      if (username) {
-        document.getElementById("loginOverlay").style.display = "none";
-        initGame(username);
-      }
+    window.addEventListener("DOMContentLoaded", () => {
+      document.getElementById("loginForm").addEventListener("submit", function(e) {
+        e.preventDefault();
+        const username = document.getElementById("usernameInput").value.trim();
+        if (username) {
+          document.getElementById("loginOverlay").style.display = "none";
+          initGame(username);
+        }
+      });
     });
     function initGame(username) {
       initFood();
-      initIslands();
+      initCosmoObjects();
       initBots();
       initPlayer(username);
       gameOver = false;
@@ -598,22 +667,14 @@
      ************************************
      * Mentagon Multiplayer Evolved
      *
-     * This file implements an evolved multiplayer-inspired game mode called "Mentagon Multiplayer Evolved."
-     * Players (and simulated bot opponents) spawn on a huge map filled with food circles (regular and big), islands,
-     * and obstacles. The player's Mentagon is a regular polygon whose number of sides (and size) increases as they eat food.
-     * A merged progress bar shows the level and progress toward the next level. When the progress bar fills,
-     * the player levels up, gains additional angles, and their movement speed decreases slightly.
+     * This file implements an evolved multiplayer-inspired game mode with a suctioning visual effect
+     * for consuming food and enemies, a merged progress bar at the top showing level and food progress,
+     * milestone celebrations with floating text, and various cosmic objects (plants, moon, fire, water, ice,
+     * and minerals) that provide special effects.
      *
-     * Consumption Effects:
-     *   - Food is now "suctioned" into the player with a visual hover/suction animation before being removed.
-     *   - Big food items (which give more points) can only be eaten if the player's level is high enough.
-     *   - When a player eats an enemy, extra food points (enemy level × 3) are awarded.
-     *
-     * Additional Features:
-     *   - There are more food circles on the map.
-     *   - A login overlay is used instead of a simple prompt.
-     *   - Islands act as obstacles that block movement.
-     *   - Once a maximum level is reached (MAX_LEVEL), extra sides are added for each level above.
+     * The player's Mentagon is a polygon that grows (in size and number of sides) as it consumes food.
+     * Big food items and enemy consumption yield bonus food points.
+     * Movement speed decreases as level increases, and additional angles are added beyond MAX_LEVEL.
      *
      * Controls:
      *   - Arrow keys: Move the player.
@@ -631,13 +692,13 @@
      * Test Instructions
      ********************
      * To test:
-     *   - Open the page and enter your username on the login screen.
+     *   - Open the page and log in using the overlay.
      *   - Use the arrow keys to move your Mentagon.
-     *   - Observe the progress bar filling as food is sucked in; when full, the level increases and extra angles are added.
-     *   - Big food items appear; they can be consumed only if your level meets their requirement.
-     *   - When you eat an enemy, you gain extra food (enemy level × 3).
-     *   - Islands block movement.
-     *   - The merged progress bar displays your current level and progress percentage.
+     *   - Observe the progress bar at the top showing your level and progress toward leveling up.
+     *   - When the progress bar fills, a milestone text appears and your level increases (with extra angles added beyond MAX_LEVEL).
+     *   - Big food items appear and can only be consumed if your level is high enough.
+     *   - When you eat an enemy, you gain bonus food points (enemy level × 3).
+     *   - Cosmic objects (of various types) appear and apply special effects when approached.
      ************************************/
 
   </script>
