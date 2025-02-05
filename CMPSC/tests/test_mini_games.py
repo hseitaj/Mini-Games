@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 import pytest
 
 # Import for Arena Clash tests
-from python.arena_clash import (
+from CMPSC.python.arena_clash import (
     Hero,
     Minion,
     distance_between,
@@ -18,7 +18,7 @@ from python.arena_clash import (
 )
 
 # Import for Two-Player Tetris tests
-from python.two_player_tetris import (
+from CMPSC.python.two_player_tetris import (
     rotate_shape,
     normalize_shape,
     TetrisBoard,
