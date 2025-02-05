@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <title>Mini Games Portal</title>
+  <!-- Base tag ensures relative paths resolve correctly -->
+  <base href="/mini-games/CMPSC/website/">
   <!-- Latest Bootstrap CSS CDN -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
@@ -31,7 +33,7 @@
     .carousel-caption {
       text-align: center;
     }
-    .h2, h2{
+    .h2, h2 {
       color: red;
     }
     .p, p {
@@ -62,6 +64,7 @@
   <div id="bannerCarousel" class="carousel slide" data-bs-ride="carousel">
     <div class="carousel-inner">
       <div class="carousel-item active">
+        <!-- Using absolute paths starting from the published repository structure -->
         <img src="/mini-games/CMPSC/assets/images/arena_clash.png" class="d-block w-100" alt="Arena Clash">
         <div class="carousel-caption d-none d-md-block">
           <h2>Arena Clash</h2>
