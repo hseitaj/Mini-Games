@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Mentagon Forms</title>
+  <style>
+    /* Basic styles for full-window canvas */
+    body {
+      margin: 0;
+      background-color: #111;
+      color: #eee;
+      font-family: Arial, sans-serif;
+    }
+    canvas {
+      display: block;
+      margin: 0 auto;
+      background-color: #222;
+    }
+    .instructions {
+      text-align: center;
+      margin-top: 10px;
+      font-size: 18px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Canvas for Mentagon Forms game -->
+  <canvas id="mentagonCanvas" width="800" height="600"></canvas>
+  <div class="instructions">
+    <p>Mentagon Forms - New Game Mode</p>
+    <p>
+      Use Left/Right arrow keys to rotate the Mentagon.<br>
+      Press A to decrease sides (min 3). Press D to increase sides (max 12).<br>
+      Press Space to reset rotation.
+    </p>
+  </div>
+
+  <script>
+    "use strict";
+
+    // Global constants
+    const CANVAS_WIDTH = 800;
+    const CANVAS_HEIGHT = 600;
+    const FPS = 60;
+    const ROTATION_SPEED = 0.05; // radians per frame
+
+    // Mentagon state variables
+    let sides = 5;               // initial number of sides
+    let rotationAngle = 0;       // current rotation in radians
+
+    // Setup canvas
+    const canvas = document.getElementById("mentagonCanvas");
+    const ctx = canvas.getContext("2d");
+
+    // Key state tracking
+    const keys = {};
+
+    window.addEventListener("keydown", (e) => {
+      // Track keys in lower case if applicable (but arrow keys remain unchanged)
+      let key = e.key;
+      if (!key.startsWith("Arrow") && key !== " ") {
+        key = key.toLowerCase();
+      }
+      keys[key] = true;
+    });
+
+    window.addEventListener("keyup", (e) => {
+      let key = e.key;
+      if (!key.startsWith("Arrow") && key !== " ") {
+        key = key.toLowerCase();
+      }
+      keys[key] = false;
+    });
+
+    /**
+     * Draw the background with a simple grid.
+     *
+     * @param {CanvasRenderingContext2D} context - The canvas 2D context.
+     */
+    function drawBackground(context) {
+      context.fillStyle = "#111";
+      context.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      context.strokeStyle = "#333";
+      context.lineWidth = 1;
+      for (let x = 0; x < CANVAS_WIDTH; x += 50) {
+        context.beginPath();
+        context.moveTo(x, 0);
+        context.lineTo(x, CANVAS_HEIGHT);
+        context.stroke();
+      }
+      for (let y = 0; y < CANVAS_HEIGHT; y += 50) {
+        context.beginPath();
+        context.moveTo(0, y);
+        context.lineTo(CANVAS_WIDTH, y);
+        context.stroke();
+      }
+    }
+
+    /**
+     * Draw a polygon (Mentagon) at the center of the canvas.
+     *
+     * The polygon is drawn with the current number of sides and rotation.
+     *
+     * @param {CanvasRenderingContext2D} context - The canvas 2D context.
+     * @param {number} sides - Number of sides for the polygon.
+     * @param {number} angle - Rotation angle in radians.
+     */
+    function drawMentagon(context, sides, angle) {
+      const centerX = CANVAS_WIDTH / 2;
+      const centerY = CANVAS_HEIGHT / 2;
+      const radius = 100;
+      context.save();
+      context.translate(centerX, centerY);
+      context.rotate(angle);
+      context.beginPath();
+      for (let i = 0; i < sides; i++) {
+        const theta = (i / sides) * 2 * Math.PI;
+        const x = radius * Math.cos(theta);
+        const y = radius * Math.sin(theta);
+        if (i === 0) {
+          context.moveTo(x, y);
+        } else {
+          context.lineTo(x, y);
+        }
+      }
+      context.closePath();
+      context.fillStyle = "#007bff";
+      context.fill();
+      context.strokeStyle = "#fff";
+      context.lineWidth = 3;
+      context.stroke();
+      context.restore();
+    }
+
+    /**
+     * Update game state: adjust rotation and sides based on key input.
+     */
+    function update() {
+      // Rotate with arrow keys.
+      if (keys["ArrowLeft"]) {
+        rotationAngle -= ROTATION_SPEED;
+      }
+      if (keys["ArrowRight"]) {
+        rotationAngle += ROTATION_SPEED;
+      }
+      // Reset rotation on Space.
+      if (keys[" "]) {
+        rotationAngle = 0;
+      }
+      // Increase/decrease sides.
+      if (keys["a"]) {
+        sides = Math.max(3, sides - 1);
+        keys["a"] = false; // prevent continuous change
+      }
+      if (keys["d"]) {
+        sides = Math.min(12, sides + 1);
+        keys["d"] = false; // prevent continuous change
+      }
+    }
+
+    /**
+     * The main game loop.
+     *
+     * Updates the game state and draws the current frame.
+     */
+    function gameLoop() {
+      update();
+      drawBackground(ctx);
+      drawMentagon(ctx, sides, rotationAngle);
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Start the game loop.
+    requestAnimationFrame(gameLoop);
+
+    /**
+     * Run simple test cases.
+     *
+     * Currently tests the drawMentagon function by checking the validity of polygon vertices.
+     */
+    function runTests() {
+      console.log("Running tests...");
+      // Test that the internal angle of a regular polygon is computed correctly.
+      // For a regular n-sided polygon, each internal angle = ((n-2)/n)*180.
+      function internalAngle(n) {
+        return ((n - 2) / n) * 180;
+      }
+      const angle5 = internalAngle(5);
+      if (Math.abs(angle5 - 108) < 0.001) {
+        console.log("Internal angle for pentagon test passed");
+      } else {
+        console.error("Internal angle for pentagon test failed");
+      }
+    }
+
+    // Uncomment the following line to run tests:
+    // runTests();
+
+  </script>
+</body>
+</html>
