@@ -7,51 +7,20 @@
   <base href="/mini-games/CMPSC/website/">
   <!-- Latest Bootstrap CSS CDN -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <style>
-    body {
-      background-color: #121212;
-      color: #e0e0e0; /* Changed text color from white to light gray */
-    }
-    .navbar, .footer {
-      background-color: #1f1f1f;
-    }
-    .card {
-      background-color: #1e1e1e;
-      border: none;
-    }
-    .card-title, .card-text {
-      color: #e0e0e0; /* Changed text color from white to light gray */
-    }
-    .carousel-item img {
-      height: 450px;
-      object-fit: cover;
-    }
-    .card-img-top {
-      height: 200px;
-      object-fit: cover;
-    }
-    .carousel-caption {
-      text-align: center;
-    }
-    .h2, h2 {
-      color: red;
-    }
-    .p, p {
-      color: blue;
-    }
-  </style>
+  <!-- External CSS for custom styles -->
+  <link rel="stylesheet" href="/mini-games/CMPSC/assets/css/style.css">
 </head>
 <body>
   <!-- Navbar -->
   <nav class="navbar navbar-expand-lg navbar-dark">
-    <div class="container-fluid">
-      <a class="navbar-brand" href="#">Mini Games Portal</a>
+    <div class="container">
+      <a class="navbar-brand mx-auto" href="#">Mini Games Portal</a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent"
         aria-controls="navbarContent" aria-expanded="false" aria-label="Toggle navigation">
         <span class="navbar-toggler-icon"></span>
       </button>
-      <div class="collapse navbar-collapse" id="navbarContent">
-        <ul class="navbar-nav ms-auto">
+      <div class="collapse navbar-collapse justify-content-center" id="navbarContent">
+        <ul class="navbar-nav">
           <li class="nav-item"><a class="nav-link" href="#games">Games</a></li>
           <li class="nav-item"><a class="nav-link" href="#about">About</a></li>
           <li class="nav-item"><a class="nav-link" href="#contact">Contact</a></li>
@@ -60,54 +29,31 @@
     </div>
   </nav>
 
-  <!-- Carousel Banner (Optional) -->
-  <div id="bannerCarousel" class="carousel slide" data-bs-ride="carousel">
-    <div class="carousel-inner">
-      <div class="carousel-item active">
-        <!-- Using absolute paths starting from the published repository structure -->
-        <img src="/mini-games/CMPSC/assets/images/arena_clash.png" class="d-block w-100" alt="Arena Clash">
-        <div class="carousel-caption d-none d-md-block">
-          <h2>Arena Clash</h2>
-          <p>Experience epic battles in the arena!</p>
-        </div>
-      </div>
-      <div class="carousel-item">
-        <img src="/mini-games/CMPSC/assets/images/two_player_tetris.png" class="d-block w-100" alt="Two-Player Tetris">
-        <div class="carousel-caption d-none d-md-block">
-          <h2>Two-Player Tetris</h2>
-          <p>Challenge your friend to a competitive game of Tetris!</p>
-        </div>
-      </div>
+  <!-- Header Banner -->
+  <header class="header-banner">
+    <div class="container text-center">
+      <h1>Welcome to Mini Games</h1>
+      <p>Experience the grit and grind of our battle arenas!</p>
     </div>
-    <button class="carousel-control-prev" type="button" data-bs-target="#bannerCarousel" data-bs-slide="prev">
-      <span class="carousel-control-prev-icon" aria-hidden="true"></span>
-      <span class="visually-hidden">Previous</span>
-    </button>
-    <button class="carousel-control-next" type="button" data-bs-target="#bannerCarousel" data-bs-slide="next">
-      <span class="carousel-control-next-icon" aria-hidden="true"></span>
-      <span class="visually-hidden">Next</span>
-    </button>
-  </div>
+  </header>
 
   <!-- Games Section -->
   <div class="container my-5" id="games">
     <h2 class="text-center mb-4">Our Games</h2>
-    <div class="row row-cols-1 row-cols-md-2 g-4">
-      <!-- Zombie Lane Card -->
+    <div class="row row-cols-1 row-cols-md-3 g-4">
+      <!-- Arena Clash Card -->
       <div class="col">
         <div class="card h-100">
-          <img src="/mini-games/CMPSC/assets/images/zombie_lane.png" class="card-img-top" alt="Zombie Lane">
+          <img src="/mini-games/CMPSC/assets/images/arena_clash.png" class="card-img-top" alt="Arena Clash">
           <div class="card-body">
-            <h5 class="card-title">Zombie Lane</h5>
-            <p class="card-text">Battle zombies in a 3D-style lane! Choose between the JavaScript version or download the Python script.</p>
+            <h5 class="card-title">Arena Clash</h5>
+            <p class="card-text">Step into the arena where Valor and Nemesis battle for supremacy!</p>
           </div>
           <div class="card-footer text-center">
-            <!-- "Play Online" opens the JS version in a new tab -->
-            <a href="/mini-games/CMPSC/js/zombie_lane.html" class="btn btn-primary" target="_blank">
+            <a href="/mini-games/CMPSC/js/arena_clash.html" class="btn btn-primary" target="_blank">
               Play Online
             </a>
-            <!-- Download link points to the Python version -->
-            <a href="/mini-games/CMPSC/python/zombie_lane_3d.py" class="btn btn-secondary" target="_blank">
+            <a href="/mini-games/CMPSC/python/arena_clash.py" class="btn btn-secondary" target="_blank">
               Download Python Version
             </a>
           </div>
@@ -122,12 +68,28 @@
             <p class="card-text">Challenge your friend to a competitive game of Tetris!</p>
           </div>
           <div class="card-footer text-center">
-            <!-- "Play Online" opens the JS version in a new tab -->
             <a href="/mini-games/CMPSC/js/tetris.html" class="btn btn-primary" target="_blank">
               Play Online
             </a>
-            <!-- Download link points to the Python version -->
             <a href="/mini-games/CMPSC/python/two_player_tetris.py" class="btn btn-secondary" target="_blank">
+              Download Python Version
+            </a>
+          </div>
+        </div>
+      </div>
+      <!-- Zombie Lane Card -->
+      <div class="col">
+        <div class="card h-100">
+          <img src="/mini-games/CMPSC/assets/images/zombie_lane.png" class="card-img-top" alt="Zombie Lane">
+          <div class="card-body">
+            <h5 class="card-title">Zombie Lane</h5>
+            <p class="card-text">Survive the zombie onslaught in a gritty, 3D-style lane battle!</p>
+          </div>
+          <div class="card-footer text-center">
+            <a href="/mini-games/CMPSC/js/zombie_lane.html" class="btn btn-primary" target="_blank">
+              Play Online
+            </a>
+            <a href="/mini-games/CMPSC/python/zombie_lane_3d.py" class="btn btn-secondary" target="_blank">
               Download Python Version
             </a>
           </div>
@@ -140,7 +102,7 @@
   <div class="container my-5" id="about">
     <h2 class="text-center">About Mini Games</h2>
     <p>
-      Mini Games is an open source project bringing together a variety of fun mini games under one roof.
+      Mini Games is an open source project bringing together a variety of fun and gritty mini games under one roof.
       Enjoy playing in your browser, or download the Python versions to run locally and modify.
     </p>
   </div>

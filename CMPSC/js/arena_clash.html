@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Arena Clash: Valor vs Nemesis</title>
+  <style>
+    /* Basic styles for full-window canvas */
+    body {
+      margin: 0;
+      background-color: #000;
+    }
+    canvas {
+      display: block;
+      margin: 0 auto;
+      background-color: #333;
+    }
+  </style>
+</head>
+<body>
+  <!-- Canvas for the game -->
+  <canvas id="gameCanvas" width="1000" height="700"></canvas>
+
+  <script>
+    "use strict";
+
+    // Global constants for the game.
+    const SCREEN_WIDTH = 1000;
+    const SCREEN_HEIGHT = 700;
+    const FPS = 60;
+
+    // Hero constants.
+    const HERO_SIZE = 50;
+    const HERO_SPEED = 5;
+    const ATTACK_RANGE = 60;
+    const ATTACK_DAMAGE = 10;
+    const ATTACK_COOLDOWN = 500; // milliseconds
+
+    // Minion constants.
+    const MINION_SIZE = 20;
+    const MINION_SPEED = 3;
+    const MINION_HEALTH = 20;
+    const MINION_ATTACK_DAMAGE = 2;
+    const MINION_ATTACK_RANGE = 40;
+    const MINION_ATTACK_COOLDOWN = 700; // milliseconds
+    const MINION_PRODUCTION_COOLDOWN = 2000; // milliseconds
+
+    // Color definitions.
+    const WHITE = "#FFFFFF";
+    const BLACK = "#000000";
+    const RED = "#FF0000";
+    const VALOR_COLOR = "dodgerblue"; // corresponds to (30,144,255)
+    const NEMESIS_COLOR = "crimson";  // corresponds to (220,20,60)
+
+    /**
+     * Calculate the Euclidean distance between two points.
+     *
+     * @param {Array<number>} point1 - [x, y] coordinates of the first point.
+     * @param {Array<number>} point2 - [x, y] coordinates of the second point.
+     * @returns {number} The Euclidean distance.
+     */
+    function distanceBetween(point1, point2) {
+      const dx = point1[0] - point2[0];
+      const dy = point1[1] - point2[1];
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    /**
+     * Draw the game background on the canvas.
+     *
+     * A dark gray background is drawn along with grid lines for improved visuals.
+     *
+     * @param {CanvasRenderingContext2D} ctx - The canvas 2D context.
+     */
+    function drawBackground(ctx) {
+      ctx.fillStyle = "rgb(50,50,50)";
+      ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+      ctx.strokeStyle = "rgb(70,70,70)";
+      const cellSize = 50;
+      for (let x = 0; x < SCREEN_WIDTH; x += cellSize) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, SCREEN_HEIGHT);
+        ctx.stroke();
+      }
+      for (let y = 0; y < SCREEN_HEIGHT; y += cellSize) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(SCREEN_WIDTH, y);
+        ctx.stroke();
+      }
+    }
+
+    /**
+     * Draw game instructions on the canvas.
+     *
+     * The instructions are rendered at the bottom left of the screen.
+     *
+     * @param {CanvasRenderingContext2D} ctx - The canvas 2D context.
+     */
+    function drawInstructions(ctx) {
+      ctx.fillStyle = WHITE;
+      ctx.font = "20px Arial";
+      const instructions = [
+        "Valor (Player 1): Arrow keys to move, Space to attack, R to produce minion",
+        "Nemesis (Player 2): WASD to move, Q to attack, E to produce minion"
+      ];
+      let x = 20;
+      let y = SCREEN_HEIGHT - (instructions.length * 30) - 20;
+      for (const line of instructions) {
+        ctx.fillText(line, x, y);
+        y += 30;
+      }
+    }
+
+    /**
+     * Class representing a hero unit in the game.
+     */
+    class Hero {
+      /**
+       * Initialize the hero.
+       *
+       * @param {number} x - Initial x position.
+       * @param {number} y - Initial y position.
+       * @param {string} color - Color of the hero.
+       * @param {Object} controls - Mapping for actions ('up', 'down', 'left', 'right', 'attack', 'produce').
+       * @param {string} name - The hero's name.
+       */
+      constructor(x, y, color, controls, name) {
+        this.x = x;
+        this.y = y;
+        this.color = color;
+        this.controls = controls;
+        this.name = name;
+        this.health = 100;
+        this.lastAttackTime = 0;
+        this.minions = [];
+        this.lastMinionProduction = 0;
+      }
+
+      /**
+       * Get the center coordinates of the hero.
+       *
+       * @returns {Array<number>} [x, y] center coordinates.
+       */
+      getCenter() {
+        return [this.x + HERO_SIZE / 2, this.y + HERO_SIZE / 2];
+      }
+
+      /**
+       * Move the hero by (dx, dy) while staying within screen boundaries.
+       *
+       * @param {number} dx - Change in x.
+       * @param {number} dy - Change in y.
+       */
+      move(dx, dy) {
+        let newX = this.x + dx;
+        let newY = this.y + dy;
+        newX = Math.max(0, Math.min(newX, SCREEN_WIDTH - HERO_SIZE));
+        newY = Math.max(0, Math.min(newY, SCREEN_HEIGHT - HERO_SIZE));
+        this.x = newX;
+        this.y = newY;
+      }
+
+      /**
+       * Check if the hero can attack based on the attack cooldown.
+       *
+       * @param {number} currentTime - Current time in milliseconds.
+       * @returns {boolean} True if the hero can attack.
+       */
+      canAttack(currentTime) {
+        return (currentTime - this.lastAttackTime) >= ATTACK_COOLDOWN;
+      }
+
+      /**
+       * Attack the enemy hero or one of its minions if in range.
+       *
+       * @param {Hero} enemyHero - The enemy hero.
+       * @param {Array<Minion>} enemyMinions - Array of enemy minions.
+       * @param {number} currentTime - Current time in milliseconds.
+       * @returns {boolean} True if an attack was performed.
+       */
+      attack(enemyHero, enemyMinions, currentTime) {
+        if (!this.canAttack(currentTime)) return false;
+        if (distanceBetween(this.getCenter(), enemyHero.getCenter()) <= ATTACK_RANGE) {
+          enemyHero.health -= ATTACK_DAMAGE;
+          this.lastAttackTime = currentTime;
+          return true;
+        }
+        for (const minion of enemyMinions) {
+          if (distanceBetween(this.getCenter(), minion.getCenter()) <= ATTACK_RANGE) {
+            minion.health -= ATTACK_DAMAGE;
+            this.lastAttackTime = currentTime;
+            return true;
+          }
+        }
+        this.lastAttackTime = currentTime;
+        return false;
+      }
+
+      /**
+       * Produce a minion if the production cooldown has passed.
+       *
+       * @param {Hero} enemy - The enemy hero (target for the minion).
+       * @param {number} currentTime - Current time in milliseconds.
+       * @returns {boolean} True if a minion was produced.
+       */
+      produceMinion(enemy, currentTime) {
+        if ((currentTime - this.lastMinionProduction) >= MINION_PRODUCTION_COOLDOWN) {
+          const spawnX = this.x + HERO_SIZE / 2 - MINION_SIZE / 2;
+          const spawnY = this.y + HERO_SIZE / 2 - MINION_SIZE / 2;
+          const newMinion = new Minion(spawnX, spawnY, this.color);
+          this.minions.push(newMinion);
+          this.lastMinionProduction = currentTime;
+          return true;
+        }
+        return false;
+      }
+
+      /**
+       * Update hero movement based on key states.
+       *
+       * @param {Object} keys - Object mapping key identifiers to boolean pressed states.
+       */
+      handleMovement(keys) {
+        if (keys[this.controls.up]) {
+          this.move(0, -HERO_SPEED);
+        }
+        if (keys[this.controls.down]) {
+          this.move(0, HERO_SPEED);
+        }
+        if (keys[this.controls.left]) {
+          this.move(-HERO_SPEED, 0);
+        }
+        if (keys[this.controls.right]) {
+          this.move(HERO_SPEED, 0);
+        }
+      }
+
+      /**
+       * Draw the hero and its health bar on the canvas.
+       *
+       * Also displays hero info (health and minion count) at a specified position.
+       *
+       * @param {CanvasRenderingContext2D} ctx - The canvas 2D context.
+       * @param {Array<number>} infoPos - [x, y] position for hero info.
+       */
+      draw(ctx, infoPos) {
+        const center = [this.x + HERO_SIZE / 2, this.y + HERO_SIZE / 2];
+        const radius = HERO_SIZE / 2;
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(center[0], center[1], radius, 0, 2 * Math.PI);
+        ctx.fill();
+        const healthBarWidth = HERO_SIZE;
+        const healthBarHeight = 5;
+        const healthPercentage = Math.max(this.health, 0) / 100;
+        const currentHealthWidth = healthBarWidth * healthPercentage;
+        ctx.fillStyle = RED;
+        ctx.fillRect(this.x, this.y - healthBarHeight - 2, healthBarWidth, healthBarHeight);
+        ctx.fillStyle = "green";
+        ctx.fillRect(this.x, this.y - healthBarHeight - 2, currentHealthWidth, healthBarHeight);
+        ctx.fillStyle = WHITE;
+        ctx.font = "20px Arial";
+        const infoText = `${this.name} Health: ${this.health} | Minions: ${this.minions.length}`;
+        ctx.fillText(infoText, infoPos[0], infoPos[1]);
+      }
+    }
+
+    /**
+     * Class representing a minion unit.
+     */
+    class Minion {
+      /**
+       * Create a minion.
+       *
+       * @param {number} x - Initial x position.
+       * @param {number} y - Initial y position.
+       * @param {string} color - Color of the minion.
+       */
+      constructor(x, y, color) {
+        this.x = x;
+        this.y = y;
+        this.color = color;
+        this.health = MINION_HEALTH;
+        this.lastAttackTime = 0;
+      }
+
+      /**
+       * Get the center coordinates of the minion.
+       *
+       * @returns {Array<number>} [x, y] center coordinates.
+       */
+      getCenter() {
+        return [this.x + MINION_SIZE / 2, this.y + MINION_SIZE / 2];
+      }
+
+      /**
+       * Update the minion's behavior.
+       *
+       * Moves toward the enemy hero and attacks if within range.
+       *
+       * @param {Hero} enemyHero - The enemy hero.
+       * @param {number} currentTime - Current time in milliseconds.
+       */
+      update(enemyHero, currentTime) {
+        const center = this.getCenter();
+        const enemyCenter = enemyHero.getCenter();
+        const dx = enemyCenter[0] - center[0];
+        const dy = enemyCenter[1] - center[1];
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > MINION_ATTACK_RANGE) {
+          let norm_dx = 0, norm_dy = 0;
+          if (dist !== 0) {
+            norm_dx = dx / dist;
+            norm_dy = dy / dist;
+          }
+          this.x += norm_dx * MINION_SPEED;
+          this.y += norm_dy * MINION_SPEED;
+        } else {
+          if ((currentTime - this.lastAttackTime) >= MINION_ATTACK_COOLDOWN) {
+            enemyHero.health -= MINION_ATTACK_DAMAGE;
+            this.lastAttackTime = currentTime;
+          }
+        }
+      }
+
+      /**
+       * Draw the minion and its health bar on the canvas.
+       *
+       * @param {CanvasRenderingContext2D} ctx - The canvas 2D context.
+       */
+      draw(ctx) {
+        const center = [this.x + MINION_SIZE / 2, this.y + MINION_SIZE / 2];
+        const radius = MINION_SIZE / 2;
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(center[0], center[1], radius, 0, 2 * Math.PI);
+        ctx.fill();
+        const healthBarWidth = MINION_SIZE;
+        const healthBarHeight = 4;
+        const healthPercentage = Math.max(this.health, 0) / MINION_HEALTH;
+        const currentHealthWidth = healthBarWidth * healthPercentage;
+        ctx.fillStyle = RED;
+        ctx.fillRect(this.x, this.y - healthBarHeight - 2, healthBarWidth, healthBarHeight);
+        ctx.fillStyle = "green";
+        ctx.fillRect(this.x, this.y - healthBarHeight - 2, currentHealthWidth, healthBarHeight);
+      }
+    }
+
+    /**
+     * Main function to run the Arena Clash game.
+     *
+     * Initializes the canvas, creates two heroes (Valor and Nemesis),
+     * sets up keyboard input, and starts the game loop.
+     */
+    function main() {
+      const canvas = document.getElementById("gameCanvas");
+      const ctx = canvas.getContext("2d");
+
+      // Define controls for each hero.
+      const valorControls = {
+        up: "ArrowUp",
+        down: "ArrowDown",
+        left: "ArrowLeft",
+        right: "ArrowRight",
+        attack: " ",  // Space key
+        produce: "r"
+      };
+      const nemesisControls = {
+        up: "w",
+        down: "s",
+        left: "a",
+        right: "d",
+        attack: "q",
+        produce: "e"
+      };
+
+      // Create heroes.
+      const valor = new Hero(100, SCREEN_HEIGHT / 2 - HERO_SIZE / 2, VALOR_COLOR, valorControls, "Valor");
+      const nemesis = new Hero(SCREEN_WIDTH - 150, SCREEN_HEIGHT / 2 - HERO_SIZE / 2, NEMESIS_COLOR, nemesisControls, "Nemesis");
+
+      let gameOver = false;
+      let winner = null;
+
+      // Key state tracking.
+      const keys = {};
+
+      // Updated key event listeners to avoid lower-casing arrow keys.
+      window.addEventListener("keydown", (e) => {
+        let key = e.key;
+        // Do not change arrow keys or the space key.
+        if (!key.startsWith("Arrow") && key !== " ") {
+          key = key.toLowerCase();
+        }
+        keys[key] = true;
+
+        if (!gameOver) {
+          if (e.key === valor.controls.attack) {
+            valor.attack(nemesis, nemesis.minions, performance.now());
+          }
+          if (e.key === nemesis.controls.attack) {
+            nemesis.attack(valor, valor.minions, performance.now());
+          }
+          if (e.key.toLowerCase() === valor.controls.produce) {
+            valor.produceMinion(nemesis, performance.now());
+          }
+          if (e.key.toLowerCase() === nemesis.controls.produce) {
+            nemesis.produceMinion(valor, performance.now());
+          }
+        }
+      });
+
+      window.addEventListener("keyup", (e) => {
+        let key = e.key;
+        if (!key.startsWith("Arrow") && key !== " ") {
+          key = key.toLowerCase();
+        }
+        keys[key] = false;
+      });
+
+      /**
+       * The main game loop.
+       *
+       * Updates game state, checks for game over, and draws all game elements.
+       */
+      function gameLoop() {
+        const currentTime = performance.now();
+
+        // Update hero movement.
+        if (!gameOver) {
+          valor.handleMovement(keys);
+          nemesis.handleMovement(keys);
+        }
+
+        // Update minions.
+        if (!gameOver) {
+          valor.minions = valor.minions.filter(minion => minion.health > 0);
+          nemesis.minions = nemesis.minions.filter(minion => minion.health > 0);
+          for (const minion of valor.minions) {
+            minion.update(nemesis, currentTime);
+          }
+          for (const minion of nemesis.minions) {
+            minion.update(valor, currentTime);
+          }
+        }
+
+        // Check for game over.
+        if (valor.health <= 0) {
+          gameOver = true;
+          winner = nemesis.name;
+        }
+        if (nemesis.health <= 0) {
+          gameOver = true;
+          winner = valor.name;
+        }
+
+        // Drawing.
+        drawBackground(ctx);
+        valor.draw(ctx, [20, 30]);
+        nemesis.draw(ctx, [SCREEN_WIDTH - 400, 30]);
+        for (const minion of valor.minions) {
+          minion.draw(ctx);
+        }
+        for (const minion of nemesis.minions) {
+          minion.draw(ctx);
+        }
+        drawInstructions(ctx);
+
+        if (gameOver) {
+          ctx.fillStyle = WHITE;
+          ctx.font = "40px Arial";
+          const text = `Game Over! ${winner} wins!`;
+          const textWidth = ctx.measureText(text).width;
+          ctx.fillText(text, (SCREEN_WIDTH - textWidth) / 2, SCREEN_HEIGHT / 2);
+        }
+
+        requestAnimationFrame(gameLoop);
+      }
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Start the game.
+    main();
+
+    /**
+     * Run basic test cases.
+     *
+     * Currently tests the distanceBetween function.
+     */
+    function runTests() {
+      console.log("Running tests...");
+      const d = distanceBetween([0, 0], [3, 4]);
+      if (d === 5) {
+        console.log("distanceBetween test passed");
+      } else {
+        console.error("distanceBetween test failed");
+      }
+    }
+
+    // To run tests, uncomment the following line:
+    // runTests();
+
+  </script>
+</body>
+</html>

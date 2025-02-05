@@ -1,0 +1,69 @@
+/* assets/css/style.css */
+
+/* Base styles for the site */
+body {
+  background-color: #121212;
+  color: #e0e0e0;
+  font-family: Arial, sans-serif;
+}
+
+/* Navbar styles */
+.navbar {
+  background-color: #1f1f1f;
+}
+.navbar .navbar-brand {
+  font-size: 1.8rem;
+}
+.navbar-nav li {
+  margin: 0 10px;
+}
+
+/* Header banner styles for a gritty game look */
+.header-banner {
+  background-color: #222;
+  padding: 60px 0;
+  text-align: center;
+  /* Optional: Uncomment the next line if you have a gritty background image */
+  /* background-image: url('/mini-games/CMPSC/assets/images/gritty_background.jpg'); */
+  background-size: cover;
+  background-position: center;
+}
+.header-banner h1 {
+  font-size: 3rem;
+  margin-bottom: 10px;
+  color: #fff;
+}
+.header-banner p {
+  font-size: 1.2rem;
+  color: #ccc;
+}
+
+/* Card styles */
+.card {
+  background-color: #1e1e1e;
+  border: none;
+}
+.card-title, .card-text {
+  color: #e0e0e0;
+}
+.card-img-top {
+  height: 200px;
+  object-fit: cover;
+}
+
+/* Button styles */
+.btn-primary {
+  background-color: #007bff;
+  border: none;
+}
+.btn-secondary {
+  background-color: #6c757d;
+  border: none;
+}
+
+/* Footer styles */
+.footer {
+  background-color: #1f1f1f;
+  color: #e0e0e0;
+  padding: 20px 0;
+}
