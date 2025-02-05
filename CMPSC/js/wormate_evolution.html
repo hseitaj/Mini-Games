@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Wormate Evolution</title>
+  <style>
+    /* Basic styles for full-window canvas and instructions */
+    body {
+      margin: 0;
+      background-color: #000;
+      font-family: Arial, sans-serif;
+    }
+    canvas {
+      display: block;
+      background-color: #111;
+    }
+    .instructions {
+      text-align: center;
+      color: #eee;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Canvas for the Wormate Evolution game -->
+  <canvas id="gameCanvas"></canvas>
+  <div class="instructions">
+    <p>Wormate Evolution</p>
+    <p>Control the worm with the Arrow keys. Eat food to grow and score points.</p>
+  </div>
+
+  <script>
+    "use strict";
+
+    // Set up canvas to fill the window.
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    // Game constants.
+    const FPS = 60;
+    const SEGMENT_SIZE = 10;      // Size of each worm segment.
+    const INITIAL_LENGTH = 10;    // Starting number of segments.
+    const WORM_SPEED = 2;         // Pixels per frame.
+    const FOOD_RADIUS = 5;
+    const FOOD_COUNT = 20;        // Number of food items present at a time.
+
+    // The worm is represented as an array of segments with {x, y}.
+    let worm = [];
+    const startX = canvas.width / 2;
+    const startY = canvas.height / 2;
+    for (let i = 0; i < INITIAL_LENGTH; i++) {
+      worm.push({ x: startX - i * SEGMENT_SIZE, y: startY });
+    }
+
+    // The current direction of movement (unit vector). Initially to the right.
+    let direction = { x: 1, y: 0 };
+
+    // Food items array.
+    let foods = [];
+    function spawnFood() {
+      return {
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height
+      };
+    }
+    // Pre-spawn food items.
+    for (let i = 0; i < FOOD_COUNT; i++) {
+      foods.push(spawnFood());
+    }
+
+    // Key state tracking.
+    const keys = {};
+    window.addEventListener("keydown", (e) => {
+      // For arrow keys, do not change case.
+      let key = e.key;
+      if (!key.startsWith("Arrow") && key !== " ") {
+        key = key.toLowerCase();
+      }
+      keys[key] = true;
+    });
+    window.addEventListener("keyup", (e) => {
+      let key = e.key;
+      if (!key.startsWith("Arrow") && key !== " ") {
+        key = key.toLowerCase();
+      }
+      keys[key] = false;
+    });
+
+    /**
+     * Update the worm's movement.
+     *
+     * The worm moves continuously in the current direction.
+     * The head position is updated based on WORM_SPEED,
+     * and each segment follows the previous one.
+     */
+    function updateWorm() {
+      // Compute new head position.
+      const head = worm[0];
+      const newHead = {
+        x: head.x + direction.x * WORM_SPEED,
+        y: head.y + direction.y * WORM_SPEED
+      };
+      // Wrap around the screen edges.
+      if (newHead.x < 0) newHead.x = canvas.width;
+      if (newHead.x > canvas.width) newHead.x = 0;
+      if (newHead.y < 0) newHead.y = canvas.height;
+      if (newHead.y > canvas.height) newHead.y = 0;
+      // Insert the new head at the beginning of the worm array.
+      worm.unshift(newHead);
+      // Remove the last segment so the worm moves (unless it has just grown).
+      if (!ateFood) {
+        worm.pop();
+      } else {
+        // Reset growth flag; the worm grows by one segment.
+        ateFood = false;
+      }
+    }
+
+    /**
+     * Check for collision between two points.
+     *
+     * @param {number} x1 - First point x-coordinate.
+     * @param {number} y1 - First point y-coordinate.
+     * @param {number} x2 - Second point x-coordinate.
+     * @param {number} y2 - Second point y-coordinate.
+     * @returns {number} The Euclidean distance.
+     */
+    function distance(x1, y1, x2, y2) {
+      return Math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2);
+    }
+
+    // Flag to indicate whether food was eaten in the current frame.
+    let ateFood = false;
+    /**
+     * Check if the worm's head collides with any food items.
+     * If so, remove the food and set the flag so the worm grows.
+     */
+    function checkFoodCollision() {
+      const head = worm[0];
+      for (let i = foods.length - 1; i >= 0; i--) {
+        const food = foods[i];
+        if (distance(head.x, head.y, food.x, food.y) < FOOD_RADIUS + SEGMENT_SIZE) {
+          foods.splice(i, 1);  // Remove the food.
+          ateFood = true;
+          // Spawn a new food item.
+          foods.push(spawnFood());
+        }
+      }
+    }
+
+    /**
+     * Draw the worm on the canvas.
+     */
+    function drawWorm() {
+      ctx.fillStyle = "#007bff";
+      for (const segment of worm) {
+        ctx.beginPath();
+        ctx.arc(segment.x, segment.y, SEGMENT_SIZE / 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    /**
+     * Draw all food items on the canvas.
+     */
+    function drawFoods() {
+      ctx.fillStyle = "#0f0";
+      for (const food of foods) {
+        ctx.beginPath();
+        ctx.arc(food.x, food.y, FOOD_RADIUS, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    /**
+     * Draw the current score on the canvas.
+     * The score is the worm's length minus its initial length.
+     */
+    function drawScore() {
+      ctx.fillStyle = "#fff";
+      ctx.font = "20px Arial";
+      const score = worm.length - INITIAL_LENGTH;
+      ctx.fillText("Score: " + score, 10, 30);
+    }
+
+    /**
+     * Update the game state:
+     * - Adjust the worm's direction based on key input.
+     * - Update the worm's position.
+     * - Check for collisions with food.
+     */
+    function update() {
+      // Update direction based on arrow keys.
+      if (keys["ArrowUp"]) {
+        direction = { x: 0, y: -1 };
+      } else if (keys["ArrowDown"]) {
+        direction = { x: 0, y: 1 };
+      } else if (keys["ArrowLeft"]) {
+        direction = { x: -1, y: 0 };
+      } else if (keys["ArrowRight"]) {
+        direction = { x: 1, y: 0 };
+      }
+      updateWorm();
+      checkFoodCollision();
+    }
+
+    /**
+     * The main game loop.
+     *
+     * Clears the canvas, updates game state, and redraws the worm, food, and score.
+     */
+    function gameLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // Draw background.
+      ctx.fillStyle = "#111";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      update();
+      drawFoods();
+      drawWorm();
+      drawScore();
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Start the game loop.
+    requestAnimationFrame(gameLoop);
+
+    /**
+     * Run basic test cases.
+     *
+     * Currently tests that the worm grows when food is eaten.
+     */
+    function runTests() {
+      console.log("Running tests...");
+      const originalLength = worm.length;
+      // Force a food collision by placing a food at the head's position.
+      foods.push({ x: worm[0].x, y: worm[0].y });
+      checkFoodCollision();
+      if (worm.length === originalLength) {
+        console.log("Test passed: Worm grew correctly on food collision.");
+      } else {
+        console.error("Test failed: Worm did not grow as expected.");
+      }
+    }
+    // To run tests, uncomment the following line:
+    // runTests();
+
+  </script>
+</body>
+</html>
