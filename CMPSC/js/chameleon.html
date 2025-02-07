@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Chameleon Nature Conquest</title>
+  <style>
+    /* Basic CSS for full-window canvas and UI */
+    body {
+      margin: 0;
+      background-color: #000;
+      color: #eee;
+      font-family: Arial, sans-serif;
+      overflow: hidden;
+    }
+    #gameCanvas {
+      display: block;
+      background-color: #111;
+    }
+    /* Merged progress bar at the very top */
+    #progressContainer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 40px;
+      border-bottom: 2px solid #eee;
+      background-color: #333;
+      z-index: 10;
+    }
+    #progressBar {
+      height: 100%;
+      background-color: #0f0;
+      width: 0%;
+      text-align: center;
+      line-height: 40px;
+      font-weight: bold;
+      color: #fff;
+    }
+    .game-over {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 48px;
+      color: #f00;
+      z-index: 20;
+      display: none;
+    }
+    /* Login overlay styles */
+    #loginOverlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+    #loginOverlay form {
+      background: #222;
+      padding: 30px;
+      border-radius: 8px;
+      text-align: center;
+    }
+    #loginOverlay input[type="text"] {
+      padding: 10px;
+      width: 250px;
+      font-size: 16px;
+      margin-bottom: 15px;
+    }
+    #loginOverlay input[type="submit"] {
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    /* Milestone celebration style */
+    .milestoneText {
+      position: absolute;
+      font-size: 36px;
+      font-weight: bold;
+      color: #ff0;
+      text-shadow: 2px 2px 4px #000;
+      z-index: 15;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <!-- Login Overlay -->
+  <div id="loginOverlay">
+    <form id="loginForm">
+      <h2>Chameleon Nature Conquest</h2>
+      <p>Enter your username:</p>
+      <input type="text" id="usernameInput" required />
+      <br>
+      <input type="submit" value="Start Game" />
+    </form>
+  </div>
+
+  <!-- Merged Progress Bar -->
+  <div id="progressContainer">
+    <div id="progressBar">Coverage: 0%</div>
+  </div>
+  <div class="game-over" id="gameOver">Game Over!</div>
+  <!-- Canvas -->
+  <canvas id="gameCanvas"></canvas>
+
+  <script>
+    "use strict";
+
+    /**************************************
+     * Configuration and Global Variables *
+     **************************************/
+    const MAP_WIDTH = 3000;
+    const MAP_HEIGHT = 3000;
+    let VIEWPORT_WIDTH = window.innerWidth;
+    let VIEWPORT_HEIGHT = window.innerHeight;
+    const FPS = 60;
+    const DT = 1000 / FPS;
+
+    // Grid settings
+    const TILE_SIZE = 20;
+    const COLS = Math.floor(MAP_WIDTH / TILE_SIZE);
+    const ROWS = Math.floor(MAP_HEIGHT / TILE_SIZE);
+    const DEFAULT_TILE_COLOR = "#98FB98"; // Unclaimed ground
+
+    // Season settings
+    const SEASONS = [
+      { name: "Spring", bgColor: "#a8e6cf", flySpawnRate: 1.0, npcSpeedMultiplier: 1.0 },
+      { name: "Summer", bgColor: "#ffd3b6", flySpawnRate: 1.5, npcSpeedMultiplier: 1.2 },
+      { name: "Autumn", bgColor: "#ffaaa5", flySpawnRate: 1.2, npcSpeedMultiplier: 0.8 },
+      { name: "Winter", bgColor: "#dcedc1", flySpawnRate: 0.8, npcSpeedMultiplier: 0.7 }
+    ];
+    let currentSeasonIndex = 0;
+    let seasonTimer = 0;
+    const SEASON_DURATION = 60; // seconds
+
+    // Chameleon (player) settings
+    const BASE_SPEED = 3;
+    const INITIAL_RADIUS = 15;
+    // The chameleon’s speed will be computed as BASE_SPEED * (INITIAL_RADIUS / currentRadius)
+    const CHAMELEON_COLORS = {
+      1: "#32CD32",  // Green
+      2: "#FF4500",  // Red
+      3: "#1E90FF",  // Blue
+      4: "#FFD700"   // Yellow
+    };
+
+    // Tongue settings
+    const TONGUE_MAX_LENGTH = 100;
+    const TONGUE_EXTEND_RATE = 3;    // fraction per second (so full extension takes ~1/3 sec)
+    const TONGUE_RETRACT_RATE = 3;   // same speed retracting
+
+    // Entity counts
+    const NUM_FLIES_INITIAL = 150;
+    const NUM_NPCS = 8;
+    const NUM_TOWERS = 4;
+    const NUM_COSMO = 12;
+
+    // Arrays for game entities
+    let flyItems = [];
+    let npcCreatures = [];
+    let towerObjects = [];
+    let projectileItems = [];
+    let cosmoObjects = [];
+    let grid = [];
+
+    let player = null;
+    let cameraOffset = { x: 0, y: 0 };
+    const keys = {};
+    let gameOver = false;
+
+    // DOM elements
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = VIEWPORT_WIDTH;
+    canvas.height = VIEWPORT_HEIGHT;
+    const progressBar = document.getElementById("progressBar");
+    const gameOverDiv = document.getElementById("gameOver");
+
+    /****************************
+     * Utility Helper Functions *
+     ****************************/
+    function distance(x1, y1, x2, y2) {
+      return Math.hypot(x1 - x2, y1 - y2);
+    }
+    // Returns the shortest distance from point p to the line segment vw
+    function distancePointToSegment(p, v, w) {
+      const l2 = (w.x - v.x)**2 + (w.y - v.y)**2;
+      if (l2 === 0) return distance(p.x, p.y, v.x, v.y);
+      let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
+      t = Math.max(0, Math.min(1, t));
+      const projection = { x: v.x + t * (w.x - v.x), y: v.y + t * (w.y - v.y) };
+      return distance(p.x, p.y, projection.x, projection.y);
+    }
+    function randomRange(min, max) {
+      return Math.random() * (max - min) + min;
+    }
+
+    /**********************************
+     * World Grid Initialization *
+     **********************************/
+    function initGrid() {
+      grid = [];
+      for (let r = 0; r < ROWS; r++) {
+        const row = [];
+        for (let c = 0; c < COLS; c++) {
+          row.push(DEFAULT_TILE_COLOR);
+        }
+        grid.push(row);
+      }
+    }
+
+    /***************************
+     * Game Object Classes *
+     ***************************/
+    class Chameleon {
+      /**
+       * Constructs a new Chameleon (player).
+       * @param {string} username - The player's username.
+       * @param {number} x - The starting x-coordinate.
+       * @param {number} y - The starting y-coordinate.
+       */
+      constructor(username, x, y) {
+        this.username = username;
+        this.x = x;
+        this.y = y;
+        this.radius = INITIAL_RADIUS;
+        this.speed = BASE_SPEED;
+        this.currentColor = CHAMELEON_COLORS[1];
+        this.score = 50; // Starting score
+        this.frozenUntil = 0;
+        // For tongue mechanics:
+        this.tongueState = "idle"; // "idle", "extending", "retracting"
+        this.tongueProgress = 0;   // 0 to 1 (0 = not extended, 1 = full extension)
+        this.tongueAngle = 0;      // Angle in radians for tongue direction
+        this.lastAngle = 0;        // Last movement direction (radians)
+      }
+      update(dt) {
+        let dx = 0, dy = 0;
+        if (keys["ArrowUp"]) dy -= 1;
+        if (keys["ArrowDown"]) dy += 1;
+        if (keys["ArrowLeft"]) dx -= 1;
+        if (keys["ArrowRight"]) dx += 1;
+        if (dx !== 0 || dy !== 0) {
+          const len = Math.sqrt(dx * dx + dy * dy);
+          dx /= len;
+          dy /= len;
+          this.lastAngle = Math.atan2(dy, dx);
+        }
+        // Update position; speed decreases as radius grows:
+        this.speed = BASE_SPEED * (INITIAL_RADIUS / this.radius);
+        this.x += dx * this.speed;
+        this.y += dy * this.speed;
+        // Clamp position within map boundaries
+        this.x = Math.max(this.radius, Math.min(this.x, MAP_WIDTH - this.radius));
+        this.y = Math.max(this.radius, Math.min(this.y, MAP_HEIGHT - this.radius));
+        // Paint the grid tile under the chameleon
+        const col = Math.floor(this.x / TILE_SIZE);
+        const row = Math.floor(this.y / TILE_SIZE);
+        grid[row][col] = this.currentColor;
+      }
+      updateTongue(dt) {
+        if (this.tongueState === "extending") {
+          this.tongueProgress += dt * TONGUE_EXTEND_RATE;
+          if (this.tongueProgress >= 1) {
+            this.tongueProgress = 1;
+            this.tongueState = "retracting";
+          }
+        } else if (this.tongueState === "retracting") {
+          this.tongueProgress -= dt * TONGUE_RETRACT_RATE;
+          if (this.tongueProgress <= 0) {
+            this.tongueProgress = 0;
+            this.tongueState = "idle";
+          }
+        }
+      }
+      draw(context) {
+        // Draw chameleon body
+        context.beginPath();
+        context.arc(this.x - cameraOffset.x, this.y - cameraOffset.y, this.radius, 0, Math.PI * 2);
+        context.fillStyle = this.currentColor;
+        context.fill();
+        context.strokeStyle = "#000";
+        context.lineWidth = 2;
+        context.stroke();
+        // Draw tongue if active
+        if (this.tongueState !== "idle" && this.tongueProgress > 0) {
+          const tongueLength = this.tongueProgress * TONGUE_MAX_LENGTH;
+          // Start point is at edge of chameleon in direction of tongueAngle
+          const startX = this.x + Math.cos(this.tongueAngle) * this.radius;
+          const startY = this.y + Math.sin(this.tongueAngle) * this.radius;
+          const endX = startX + Math.cos(this.tongueAngle) * tongueLength;
+          const endY = startY + Math.sin(this.tongueAngle) * tongueLength;
+          context.beginPath();
+          context.moveTo(startX - cameraOffset.x, startY - cameraOffset.y);
+          context.lineTo(endX - cameraOffset.x, endY - cameraOffset.y);
+          context.strokeStyle = "#fff";
+          context.lineWidth = 4;
+          context.stroke();
+        }
+      }
+      collidesWith(entity) {
+        return distance(this.x, this.y, entity.x, entity.y) < (this.radius + entity.radius);
+      }
+    }
+
+    class NPC {
+      constructor(x, y, color) {
+        this.x = x;
+        this.y = y;
+        this.radius = INITIAL_RADIUS - 2;
+        this.speed = BASE_SPEED * 0.8;
+        this.direction = randomRange(0, Math.PI * 2);
+        this.color = color;
+      }
+      update() {
+        if (Math.random() < 0.02) {
+          this.direction = randomRange(0, Math.PI * 2);
+        }
+        const dx = Math.cos(this.direction) * this.speed;
+        const dy = Math.sin(this.direction) * this.speed;
+        this.x += dx;
+        this.y += dy;
+        this.x = Math.max(this.radius, Math.min(this.x, MAP_WIDTH - this.radius));
+        this.y = Math.max(this.radius, Math.min(this.y, MAP_HEIGHT - this.radius));
+        const col = Math.floor(this.x / TILE_SIZE);
+        const row = Math.floor(this.y / TILE_SIZE);
+        grid[row][col] = this.color;
+      }
+      draw(context) {
+        context.beginPath();
+        context.arc(this.x - cameraOffset.x, this.y - cameraOffset.y, this.radius, 0, Math.PI * 2);
+        context.fillStyle = this.color;
+        context.fill();
+      }
+      collidesWithFood(food) {
+        return distance(this.x, this.y, food.x, food.y) < (this.radius + food.radius);
+      }
+    }
+
+    // Food items look like flies. For simplicity, we draw them with a small ellipse and two "wings".
+    class Food {
+      constructor(x, y, radius) {
+        this.x = x;
+        this.y = y;
+        this.radius = radius;
+        this.foodValue = 1;
+        // Randomly choose one of two colors for variety
+        this.color = (Math.random() < 0.5) ? "#0f0" : "#ff0";
+        this.vx = (Math.random() - 0.5) * 20;
+        this.vy = (Math.random() - 0.5) * 20;
+      }
+      update(dt) {
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+        if (this.x < 0 || this.x > MAP_WIDTH) this.vx *= -1;
+        if (this.y < 0 || this.y > MAP_HEIGHT) this.vy *= -1;
+      }
+      draw(context) {
+        context.save();
+        context.translate(this.x - cameraOffset.x, this.y - cameraOffset.y);
+        // Draw body
+        context.beginPath();
+        context.ellipse(0, 0, this.radius, this.radius * 0.6, 0, 0, Math.PI * 2);
+        context.fillStyle = this.color;
+        context.fill();
+        // Draw wings (simple lines)
+        context.strokeStyle = "#000";
+        context.lineWidth = 1;
+        context.beginPath();
+        context.moveTo(-this.radius, -this.radius*0.4);
+        context.lineTo(-this.radius - 5, -this.radius*0.8);
+        context.moveTo(this.radius, -this.radius*0.4);
+        context.lineTo(this.radius + 5, -this.radius*0.8);
+        context.stroke();
+        context.restore();
+      }
+    }
+
+    class Tower {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.size = 30;
+        this.range = 150;
+        this.fireRate = 2000; // ms
+        this.projectileSpeed = 100;
+        this.lastFireTime = 0;
+      }
+      draw(context) {
+        context.save();
+        context.translate(this.x - cameraOffset.x, this.y - cameraOffset.y);
+        context.fillStyle = "#8B4513";
+        context.fillRect(-this.size/2, -this.size/2, this.size, this.size);
+        context.strokeStyle = "#fff";
+        context.beginPath();
+        context.arc(0, 0, this.range, 0, Math.PI * 2);
+        context.stroke();
+        context.restore();
+      }
+    }
+
+    class Projectile {
+      constructor(x, y, angle) {
+        this.x = x;
+        this.y = y;
+        this.vx = Math.cos(angle) * 100;
+        this.vy = Math.sin(angle) * 100;
+        this.radius = 4;
+      }
+      update(dt) {
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+      }
+      draw(context) {
+        context.beginPath();
+        context.arc(this.x - cameraOffset.x, this.y - cameraOffset.y, this.radius, 0, Math.PI * 2);
+        context.fillStyle = "#FF0000";
+        context.fill();
+      }
+    }
+
+    class CosmoObject {
+      constructor(x, y, type) {
+        this.x = x;
+        this.y = y;
+        this.type = type;
+        this.size = randomRange(30, 80);
+      }
+      draw(context) {
+        context.save();
+        context.translate(this.x - cameraOffset.x, this.y - cameraOffset.y);
+        switch(this.type) {
+          case "plant":
+            context.fillStyle = "#0a0";
+            context.beginPath();
+            context.arc(0, 0, this.size/2, 0, Math.PI*2);
+            context.fill();
+            break;
+          case "moon":
+            context.fillStyle = "#ccc";
+            context.beginPath();
+            context.arc(0, 0, this.size/2, 0, Math.PI*2);
+            context.fill();
+            break;
+          case "fire":
+            context.fillStyle = "#f00";
+            drawStar(context, 0, 0, this.size/4, this.size/2, 5);
+            break;
+          case "water":
+            context.fillStyle = "#00f";
+            context.beginPath();
+            context.arc(0, 0, this.size/2, 0, Math.PI*2);
+            context.fill();
+            break;
+          case "ice":
+            context.fillStyle = "#0ff";
+            drawPolygon(context, 6, this.size/2);
+            break;
+          case "mineral":
+            context.fillStyle = "#888";
+            drawDiamond(context, this.size/2);
+            break;
+          default:
+            context.fillStyle = "#fff";
+            context.fillRect(-this.size/2, -this.size/2, this.size, this.size);
+        }
+        context.restore();
+      }
+      applyEffect(player, currentTime) {
+        if (distance(this.x, this.y, player.x, player.y) < (this.size/2 + player.radius)) {
+          switch(this.type) {
+            case "plant":
+              player.speed += 0.5;
+              break;
+            case "moon":
+              player.score += 10;
+              break;
+            case "fire":
+              player.score = Math.max(0, player.score - 10);
+              break;
+            case "water":
+              player.speed = Math.max(1, player.speed - 0.5);
+              break;
+            case "ice":
+              player.frozenUntil = currentTime + 2000;
+              break;
+            case "mineral":
+              player.score += 20;
+              break;
+          }
+          return true;
+        }
+        return false;
+      }
+    }
+
+    // Helper drawing functions for cosmo objects.
+    function drawStar(ctx, cx, cy, innerRadius, outerRadius, points) {
+      ctx.beginPath();
+      let angle = Math.PI / points;
+      for (let i = 0; i < 2 * points; i++) {
+        let r = (i % 2 === 0) ? outerRadius : innerRadius;
+        let a = i * angle;
+        let x = cx + Math.cos(a) * r;
+        let y = cy + Math.sin(a) * r;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+    function drawPolygon(ctx, sides, radius) {
+      ctx.beginPath();
+      for (let i = 0; i < sides; i++) {
+        let theta = (i / sides) * 2 * Math.PI;
+        let x = radius * Math.cos(theta);
+        let y = radius * Math.sin(theta);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+    function drawDiamond(ctx, halfSize) {
+      ctx.beginPath();
+      ctx.moveTo(0, -halfSize);
+      ctx.lineTo(halfSize, 0);
+      ctx.lineTo(0, halfSize);
+      ctx.lineTo(-halfSize, 0);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    /****************************
+     * Initialization Functions *
+     ****************************/
+    function initFlies() {
+      flyItems = [];
+      for (let i = 0; i < NUM_FLIES_INITIAL; i++) {
+        const x = randomRange(0, MAP_WIDTH);
+        const y = randomRange(0, MAP_HEIGHT);
+        const radius = randomRange(2, 6);
+        flyItems.push(new Food(x, y, radius));
+      }
+    }
+    function initNPCs() {
+      npcCreatures = [];
+      const npcColors = ["#FF69B4", "#FFA500", "#7B68EE"];
+      for (let i = 0; i < NUM_NPCS; i++) {
+        const x = randomRange(0, MAP_WIDTH);
+        const y = randomRange(0, MAP_HEIGHT);
+        const color = npcColors[i % npcColors.length];
+        npcCreatures.push(new NPC(x, y, color));
+      }
+    }
+    function initTowers() {
+      towerObjects = [];
+      for (let i = 0; i < NUM_TOWERS; i++) {
+        const x = randomRange(0, MAP_WIDTH);
+        const y = randomRange(0, MAP_HEIGHT);
+        towerObjects.push(new Tower(x, y));
+      }
+    }
+    function initCosmoObjects() {
+      cosmoObjects = [];
+      const types = ["plant", "moon", "fire", "water", "ice", "mineral"];
+      for (let i = 0; i < NUM_COSMO; i++) {
+        const type = types[Math.floor(randomRange(0, types.length))];
+        const x = randomRange(0, MAP_WIDTH);
+        const y = randomRange(0, MAP_HEIGHT);
+        cosmoObjects.push(new CosmoObject(x, y, type));
+      }
+    }
+    function initPlayer(username) {
+      const x = randomRange(0, MAP_WIDTH);
+      const y = randomRange(0, MAP_HEIGHT);
+      player = new Chameleon(username, x, y);
+    }
+    function updateCamera() {
+      cameraOffset.x = player.x - VIEWPORT_WIDTH / 2;
+      cameraOffset.y = player.y - VIEWPORT_HEIGHT / 2;
+      cameraOffset.x = Math.max(0, Math.min(cameraOffset.x, MAP_WIDTH - VIEWPORT_WIDTH));
+      cameraOffset.y = Math.max(0, Math.min(cameraOffset.y, MAP_HEIGHT - VIEWPORT_HEIGHT));
+    }
+    function createMilestoneText(text) {
+      const div = document.createElement("div");
+      div.className = "milestoneText";
+      div.innerText = text;
+      document.body.appendChild(div);
+      const px = player.x - cameraOffset.x;
+      const py = player.y - cameraOffset.y;
+      div.style.left = px + "px";
+      div.style.top = py + "px";
+      setTimeout(() => { div.style.opacity = "0"; }, 1000);
+      setTimeout(() => { document.body.removeChild(div); }, 1500);
+    }
+
+    /**********************
+     * Main Game Loop *
+     **********************/
+    let lastTime = performance.now();
+    function gameLoop(currentTime) {
+      const dt = (currentTime - lastTime) / 1000;
+      lastTime = currentTime;
+
+      // Season cycling
+      seasonTimer += dt;
+      if (seasonTimer > SEASON_DURATION) {
+        seasonTimer = 0;
+        currentSeasonIndex = (currentSeasonIndex + 1) % SEASONS.length;
+      }
+
+      // Update player (if not frozen)
+      if (currentTime > player.frozenUntil) {
+        player.update(dt);
+      }
+      player.updateTongue(dt);
+
+      // If tongue is active, check collision with flies along the tongue line
+      if (player.tongueState !== "idle" && player.tongueProgress > 0) {
+        const tongueLength = player.tongueProgress * TONGUE_MAX_LENGTH;
+        const start = {
+          x: player.x + Math.cos(player.tongueAngle) * player.radius,
+          y: player.y + Math.sin(player.tongueAngle) * player.radius
+        };
+        const end = {
+          x: start.x + Math.cos(player.tongueAngle) * tongueLength,
+          y: start.y + Math.sin(player.tongueAngle) * tongueLength
+        };
+        // Check each fly
+        for (let i = flyItems.length - 1; i >= 0; i--) {
+          const fly = flyItems[i];
+          const d = distancePointToSegment({ x: fly.x, y: fly.y }, start, end);
+          if (d < fly.radius + 2) {  // If within grabbing distance
+            flyItems.splice(i, 1);
+            player.score += 5;
+            // Grow the chameleon slightly
+            player.radius += 0.5;
+          }
+        }
+      }
+
+      // Spawn flies probabilistically based on season
+      if (Math.random() < SEASONS[currentSeasonIndex].flySpawnRate * dt * 0.5) {
+        const x = randomRange(0, MAP_WIDTH);
+        const y = randomRange(0, MAP_HEIGHT);
+        const radius = randomRange(2, 6);
+        flyItems.push(new Food(x, y, radius));
+      }
+      flyItems.forEach(fly => fly.update(dt));
+      // Check collision between chameleon and flies (if not using tongue)
+      for (let i = flyItems.length - 1; i >= 0; i--) {
+        if (player.collidesWith(flyItems[i])) {
+          flyItems.splice(i, 1);
+          player.score += 5;
+          player.radius += 0.5;
+        }
+      }
+
+      // Update NPCs (their speed is modified by season)
+      npcCreatures.forEach(npc => {
+        npc.speed = BASE_SPEED * SEASONS[currentSeasonIndex].npcSpeedMultiplier;
+        npc.update();
+      });
+
+      // Towers fire projectiles if player is in range
+      towerObjects.forEach(tower => {
+        if (distance(tower.x, tower.y, player.x, player.y) < tower.range &&
+            currentTime - tower.lastFireTime > tower.fireRate) {
+          const angle = Math.atan2(player.y - tower.y, player.x - tower.x);
+          projectileItems.push(new Projectile(tower.x, tower.y, angle));
+          tower.lastFireTime = currentTime;
+        }
+      });
+      // Update projectiles and check collision with player
+      for (let i = projectileItems.length - 1; i >= 0; i--) {
+        const proj = projectileItems[i];
+        proj.update(dt);
+        if (proj.x < 0 || proj.x > MAP_WIDTH || proj.y < 0 || proj.y > MAP_HEIGHT) {
+          projectileItems.splice(i, 1);
+          continue;
+        }
+        if (distance(proj.x, proj.y, player.x, player.y) < (player.radius + proj.radius)) {
+          projectileItems.splice(i, 1);
+          player.score = Math.max(0, player.score - 10);
+        }
+      }
+
+      // Cosmo objects apply effects when player is near
+      for (let i = cosmoObjects.length - 1; i >= 0; i--) {
+        const obj = cosmoObjects[i];
+        if (obj.applyEffect(player, currentTime)) {
+          cosmoObjects.splice(i, 1);
+          const types = ["plant", "moon", "fire", "water", "ice", "mineral"];
+          const newType = types[Math.floor(randomRange(0, types.length))];
+          cosmoObjects.push(new CosmoObject(randomRange(0, MAP_WIDTH), randomRange(0, MAP_HEIGHT), newType));
+        }
+      }
+
+      updateCamera();
+
+      // Draw the scene
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // Draw background based on season
+      ctx.fillStyle = SEASONS[currentSeasonIndex].bgColor;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // Draw grid tiles
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          ctx.fillStyle = grid[r][c];
+          let x = c * TILE_SIZE - cameraOffset.x;
+          let y = r * TILE_SIZE - cameraOffset.y;
+          ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+        }
+      }
+      // Draw cosmo objects
+      cosmoObjects.forEach(obj => obj.draw(ctx));
+      // Draw flies
+      flyItems.forEach(fly => fly.draw(ctx));
+      // Draw NPCs
+      npcCreatures.forEach(npc => npc.draw(ctx));
+      // Draw towers
+      towerObjects.forEach(tower => tower.draw(ctx));
+      // Draw projectiles
+      projectileItems.forEach(proj => proj.draw(ctx));
+      // Draw player (chameleon)
+      player.draw(ctx);
+
+      // Calculate territory coverage (percentage of grid painted with player's color)
+      let painted = 0;
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          if (grid[r][c] === player.currentColor) painted++;
+        }
+      }
+      const coveragePercent = Math.min(100, (painted / (ROWS * COLS)) * 100);
+      progressBar.style.width = coveragePercent.toFixed(1) + "%";
+      progressBar.innerText = "Coverage: " + Math.floor(coveragePercent) + "%";
+
+      // Milestone celebration
+      if (coveragePercent > 50 && coveragePercent < 60) {
+        createMilestoneText("Halfway There!");
+      }
+      // End game condition: if score drops too low
+      if (player.score <= 0) {
+        gameOver = true;
+      }
+      if (gameOver) {
+        gameOverDiv.style.display = "block";
+      } else {
+        requestAnimationFrame(gameLoop);
+      }
+    }
+
+    /*********************
+     * Event Listeners *
+     *********************/
+    window.addEventListener("keydown", (e) => {
+      let key = e.key;
+      if (!key.startsWith("Arrow") && key !== " ") {
+        key = key.toLowerCase();
+      }
+      keys[key] = true;
+      // Change chameleon color with number keys
+      if (e.key === '1') player.currentColor = CHAMELEON_COLORS[1];
+      else if (e.key === '2') player.currentColor = CHAMELEON_COLORS[2];
+      else if (e.key === '3') player.currentColor = CHAMELEON_COLORS[3];
+      else if (e.key === '4') player.currentColor = CHAMELEON_COLORS[4];
+      // Activate tongue on spacebar press if idle
+      if (e.key === ' ' && player.tongueState === "idle") {
+        player.tongueState = "extending";
+        player.tongueProgress = 0;
+        // Set tongue direction to last movement angle (or default to 0)
+        player.tongueAngle = (player.lastAngle !== undefined) ? player.lastAngle : 0;
+      }
+    });
+    window.addEventListener("keyup", (e) => {
+      let key = e.key;
+      if (!key.startsWith("Arrow") && key !== " ") {
+        key = key.toLowerCase();
+      }
+      keys[key] = false;
+    });
+    window.addEventListener("resize", () => {
+      VIEWPORT_WIDTH = window.innerWidth;
+      VIEWPORT_HEIGHT = window.innerHeight;
+      canvas.width = VIEWPORT_WIDTH;
+      canvas.height = VIEWPORT_HEIGHT;
+    });
+
+    /***********************
+     * Initialization and Login *
+     ***********************/
+    window.addEventListener("DOMContentLoaded", () => {
+      document.getElementById("loginForm").addEventListener("submit", function(e) {
+        e.preventDefault();
+        const username = document.getElementById("usernameInput").value.trim();
+        if (username) {
+          document.getElementById("loginOverlay").style.display = "none";
+          initGame(username);
+        }
+      });
+    });
+    function initGame(username) {
+      initGrid();
+      initFlies();
+      initNPCs();
+      initTowers();
+      initCosmoObjects();
+      initPlayer(username);
+      gameOver = false;
+      gameOverDiv.style.display = "none";
+      requestAnimationFrame(gameLoop);
+    }
+    function initPlayer(username) {
+      const x = randomRange(0, MAP_WIDTH);
+      const y = randomRange(0, MAP_HEIGHT);
+      initGrid();
+      player = new Chameleon(username, x, y);
+    }
+
+    /************************************
+     * PEP 257–Style Documentation Block
+     ************************************
+     * Chameleon Nature Conquest
+     *
+     * This file implements an open-world territory control game inspired by Paper.io and Agar.io,
+     * enriched with natural elements and chameleon-specific mechanics. The player controls a chameleon
+     * that paints the grid-based world with its current color as it moves, adapts and grows (becoming slower),
+     * and can extend its tongue (via the spacebar) to grab food (rendered as flies).
+     *
+     * Additional features include roaming NPCs that claim territory, defensive towers that fire projectiles,
+     * cosmic objects that grant temporary effects, and seasonal cycling that alters background colors, fly
+     * spawn rates, and NPC speeds.
+     *
+     * Controls:
+     *   - Arrow keys: Move the chameleon.
+     *   - Keys 1–4: Change the chameleon's color.
+     *   - Spacebar: Extend/retract the tongue to grab food.
+     *
+     * The merged progress bar at the top displays the percentage of the world painted with the player's color.
+     * A login overlay prompts for a username before starting the game.
+     *
+     * Repository Structure:
+     *   This file is self-contained and follows a style similar to Mentagon Multiplayer Evolved.
+     ************************************/
+  </script>
+</body>
+</html>
