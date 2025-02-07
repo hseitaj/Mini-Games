@@ -162,7 +162,7 @@
     const GAME_DURATION = 120; // seconds
     let elapsedTime = 0;
 
-    // Grid: each cell is an object with { color, owner }
+    // Grid: each cell stores { color, owner }
     const TILE_SIZE = 20;
     const COLS = Math.floor(MAP_WIDTH / TILE_SIZE);
     const ROWS = Math.floor(MAP_HEIGHT / TILE_SIZE);
@@ -213,7 +213,7 @@
     let projectileItems = [];
     let cosmoObjects = [];
     let grid = [];
-    let chameleons = []; // This includes player, bots, and minions.
+    let chameleons = []; // includes player, bots, and minions
 
     // Game state.
     let player = null;
@@ -260,7 +260,6 @@
     function randomRange(min, max) {
       return Math.random() * (max - min) + min;
     }
-    // Blend two hex colors.
     function blendColors(c1, c2) {
       c1 = c1.slice(1);
       c2 = c2.slice(1);
@@ -346,10 +345,10 @@
         this.score = 50;
         this.frozenUntil = 0;
         this.isBot = isBot;
-        // For minions, set owner (will be player's username).
+        // For minions, owner is set to player's username.
         this.owner = null;
-        // For splitting: for newly created minions.
-        this.justSplit = 0; // seconds remaining for "run away" behavior.
+        // For splitting: a newly created minion runs away for a few seconds.
+        this.justSplit = 0;
         this.initialDirection = 0;
         // Tongue mechanics.
         this.tongueState = "idle";
@@ -363,13 +362,13 @@
       update(dt) {
         let dx = 0, dy = 0;
         if (this.owner !== null) {
-          // This is a minion; if just split, run in initial direction.
+          // This is a minion.
           if (this.justSplit > 0) {
             dx = Math.cos(this.initialDirection);
             dy = Math.sin(this.initialDirection);
             this.justSplit -= dt;
           } else {
-            // Otherwise, follow the main player.
+            // Follow the main player.
             let targetX = player.x;
             let targetY = player.y;
             dx = targetX - this.x;
@@ -383,12 +382,13 @@
               dy = 0;
             }
           }
-          // Minions follow at a slightly faster pace.
+          // Minions follow at a slightly faster rate.
           this.x += dx * this.speed * 1.2;
           this.y += dy * this.speed * 1.2;
-          // Always update color to match player's.
+          // Update minion color to match player's.
           this.currentColor = player.currentColor;
         } else if (this.isBot) {
+          // Bot behavior.
           this.aiTimer += dt;
           if (this.aiTimer > 2) {
             this.aiDirection = randomRange(0, Math.PI * 2);
@@ -399,7 +399,7 @@
           this.x += dx * this.speed;
           this.y += dy * this.speed;
         } else {
-          // Player controlled.
+          // Player-controlled.
           if (keys["ArrowUp"]) dy -= 1;
           if (keys["ArrowDown"]) dy += 1;
           if (keys["ArrowLeft"]) dx -= 1;
@@ -415,8 +415,7 @@
         }
         this.x = Math.max(this.radius, Math.min(this.x, MAP_WIDTH - this.radius));
         this.y = Math.max(this.radius, Math.min(this.y, MAP_HEIGHT - this.radius));
-
-        // Territory painting: update all grid cells whose centers are within this.radius.
+        // Territory painting.
         const startCol = Math.floor((this.x - this.radius) / TILE_SIZE);
         const endCol = Math.floor((this.x + this.radius) / TILE_SIZE);
         const startRow = Math.floor((this.y - this.radius) / TILE_SIZE);
@@ -432,7 +431,6 @@
                   cell.owner = this.username;
                   cell.color = this.currentColor;
                 } else if (cell.owner !== this.username) {
-                  // Only convert if our score is higher than the current owner's.
                   let opp = chameleons.find(ch => ch.username === cell.owner);
                   if (opp && this.score > opp.score) {
                     opp.score = Math.max(0, opp.score - 1);
@@ -464,7 +462,7 @@
         }
       }
       draw(context) {
-        // For the player (main body) draw the image if loaded.
+        // For the player’s main body, draw the image.
         if (!this.isBot && this.owner === null && playerImgLoaded) {
           context.drawImage(
             playerImg,
@@ -651,7 +649,7 @@
               chameleon.score = Math.max(0, chameleon.score - 10);
               break;
             case "water":
-              // Optional minor effect.
+              // Optionally, add a minor effect.
               break;
             case "ice":
               chameleon.frozenUntil = currentTime + 2000;
@@ -733,7 +731,7 @@
       }
     }
     function initBots() {
-      // Remove existing bots/minions (only keep player's main body and minions).
+      // Remove any existing bots or minions that are not player-controlled.
       chameleons = chameleons.filter(ch => ch.owner === null && !ch.isBot);
       const botNames = Object.keys(CHAMELEON_COLORS).filter(key => key !== "player");
       for (let i = 0; i < NUM_BOTS; i++) {
@@ -784,7 +782,7 @@
         const newScore = player.score * 0.5;
         player.radius = newRadius;
         player.score = newScore;
-        // Spawn a minion with a slight random offset.
+        // Create a minion with a slight offset.
         const offsetAngle = randomRange(0, 2 * Math.PI);
         const offsetDist = newRadius + 5;
         const minionX = player.x + Math.cos(offsetAngle) * offsetDist;
@@ -793,7 +791,7 @@
         minion.radius = newRadius;
         minion.score = newScore;
         minion.owner = player.username;
-        // Newly split minions run in the initial split direction for 3 seconds.
+        // Newly split minions run in their initial direction for 3 seconds.
         minion.justSplit = 3.0;
         minion.initialDirection = offsetAngle;
         chameleons.push(minion);
@@ -872,7 +870,11 @@
           const a = chameleons[i];
           const b = chameleons[j];
           // Skip collisions between your own minions and your main body.
-          if (a.owner === player.username && b.owner === player.username) continue;
+          if ((a.owner === player.username && b.owner === null) ||
+              (b.owner === player.username && a.owner === null) ||
+              (a.owner === player.username && b.owner === player.username)) {
+            continue;
+          }
           if (a.collidesWith(b)) {
             if (a.radius > b.radius * 1.2 && a.score > b.score) {
               a.score += b.score * 0.5;
@@ -1161,22 +1163,28 @@
      ************************************
      * Chameleon Clash Redux: Domain Duel Ultimate
      *
-     * This file implements a competitive, open‐world territory control game with advanced mechanics.
-     * You and AI-controlled bots roam an arena and claim territory using a grid system. Each grid cell
-     * stores both a color and an owner; converting an opponent’s cell (if your score is higher) awards bonus points.
+     * This file implements a competitive territory control game with advanced splitting and merging mechanics.
+     * You and AI-controlled bots roam an arena and claim territory via a grid system where each cell stores a
+     * color and an owner. When you convert an opponent’s cell (if your score is higher), you gain bonus points.
      *
-     * New features include:
-     *   - **Splitting Mechanic:** Press "S" to split your chameleon into friendly minions that initially run
-     *     away (for 3 seconds) and then follow you. They automatically update their color to match yours.
+     * New features:
+     *   - **Splitting Mechanic:** Press "S" to split your chameleon (if large enough) into friendly minions that
+     *     initially run away for 3 seconds and then follow you. They update their color to match yours.
      *   - **Merging Mechanic:** Press "M" to merge nearby minions back into your main body.
-     *   - **Revised Collision Rules:** You can only consume an opponent if you are at least 20% larger and have a higher score.
-     *   - **Adaptive Territory Conversion:** Cells are claimed based on the area your chameleon covers.
-     *     Converting an opponent’s cell awards bonus points and spawns particle effects.
-     *   - **Enhanced Visual Effects:** Glowing grid boundaries, mix indicators, particle effects, and a day/night overlay.
-     *   - **Chameleon Rendering:** The player’s chameleon is drawn using an image, while bots are rendered as circles.
-     *   - **Minion Behavior:** Minions (spawned via splitting) follow you autonomously after a short “run away” period.
-     *   - **Controls:** Arrow keys to move, keys 1–4 to change color, spacebar to extend your tongue (grab flies/stun bots),
-     *     S to split, M to merge minions, and P to pause.
+     *   - **Collision Handling:** Collisions between your own minions and your main body are skipped, preventing
+     *     you from consuming your friendly NPCs.
+     *   - **Adaptive Territory Conversion:** Cells are claimed based on the area your chameleon covers; converting
+     *     an opponent’s cell awards bonus points and spawns particles.
+     *   - **Enhanced Visual Effects:** Glowing grid boundaries, mix indicators, a day/night overlay, and particle effects.
+     *   - **Chameleon Rendering:** The player is rendered using an image (replaceable) and bots are drawn as circles.
+     *
+     * Controls:
+     *   - Arrow keys: Move your chameleon.
+     *   - Keys 1–4: Change your chameleon's color.
+     *   - Spacebar: Extend/retract your tongue (to grab flies or stun bots).
+     *   - S: Split your chameleon to create friendly minions.
+     *   - M: Merge nearby minions back into your main body.
+     *   - P: Toggle pause.
      *
      * Repository Structure:
      *   This file is self-contained and styled similarly to Mentagon Multiplayer Evolved.
