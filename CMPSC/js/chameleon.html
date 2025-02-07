@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Chameleon Nature Conquest</title>
+  <title>Chameleon Clash Redux: Domain Duel Ultimate</title>
+  <!-- Bootstrap CSS for styling -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Favicon (placeholder) -->
+  <link rel="icon" href="https://via.placeholder.com/32?text=C" type="image/png">
   <style>
     /* Basic CSS for full-window canvas and UI */
     body {
@@ -11,13 +15,23 @@
       color: #eee;
       font-family: Arial, sans-serif;
       overflow: hidden;
+      position: relative;
+    }
+    #gameCanvas, #dayNightOverlay {
+      position: absolute;
+      top: 0;
+      left: 0;
     }
     #gameCanvas {
-      display: block;
       background-color: #111;
+      z-index: 2;
     }
-    /* Merged progress bar at the very top */
-    #progressContainer {
+    #dayNightOverlay {
+      z-index: 5;
+      pointer-events: none;
+    }
+    /* Scoreboard bar at the top */
+    #scoreboardContainer {
       position: absolute;
       top: 0;
       left: 0;
@@ -26,15 +40,10 @@
       border-bottom: 2px solid #eee;
       background-color: #333;
       z-index: 10;
-    }
-    #progressBar {
-      height: 100%;
-      background-color: #0f0;
-      width: 0%;
-      text-align: center;
-      line-height: 40px;
-      font-weight: bold;
-      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      font-size: 16px;
     }
     .game-over {
       position: absolute;
@@ -46,7 +55,22 @@
       z-index: 20;
       display: none;
     }
-    /* Login overlay styles */
+    /* Pause overlay */
+    #pauseOverlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.7);
+      z-index: 15;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      font-size: 48px;
+      color: #ff0;
+    }
+    /* Login overlay styles using Bootstrap */
     #loginOverlay {
       position: fixed;
       top: 0;
@@ -92,20 +116,34 @@
   <!-- Login Overlay -->
   <div id="loginOverlay">
     <form id="loginForm">
-      <h2>Chameleon Nature Conquest</h2>
+      <h2>Chameleon Clash Redux</h2>
       <p>Enter your username:</p>
       <input type="text" id="usernameInput" required />
       <br>
-      <input type="submit" value="Start Game" />
+      <input type="submit" value="Start Game" class="btn btn-primary" />
     </form>
   </div>
 
-  <!-- Merged Progress Bar -->
-  <div id="progressContainer">
-    <div id="progressBar">Coverage: 0%</div>
+  <!-- Scoreboard Bar -->
+  <div id="scoreboardContainer">
+    <div id="timeDisplay">Time: 120</div>
+    <div id="playerScore">You: 50</div>
+    <div id="topScore">Top: 50</div>
   </div>
-  <div class="game-over" id="gameOver">Game Over!</div>
-  <!-- Canvas -->
+
+  <!-- Pause Overlay -->
+  <div id="pauseOverlay">Paused</div>
+
+  <!-- Game Over Overlay with Restart Button -->
+  <div class="game-over" id="gameOver">
+    <div id="gameOverMessage"></div>
+    <button id="restartBtn" class="btn btn-danger mt-3">Restart</button>
+  </div>
+
+  <!-- Day/Night Overlay -->
+  <canvas id="dayNightOverlay"></canvas>
+
+  <!-- Main Game Canvas -->
   <canvas id="gameCanvas"></canvas>
 
   <script>
@@ -121,65 +159,89 @@
     const FPS = 60;
     const DT = 1000 / FPS;
 
-    // Grid settings
+    const GAME_DURATION = 120; // seconds
+    let elapsedTime = 0;
+
+    // Grid: each cell is an object with { color, owner }
     const TILE_SIZE = 20;
     const COLS = Math.floor(MAP_WIDTH / TILE_SIZE);
     const ROWS = Math.floor(MAP_HEIGHT / TILE_SIZE);
-    const DEFAULT_TILE_COLOR = "#98FB98"; // Unclaimed ground
+    const DEFAULT_TILE_COLOR = "#98FB98";
 
-    // Season settings
+    // Season settings.
     const SEASONS = [
-      { name: "Spring", bgColor: "#a8e6cf", flySpawnRate: 1.0, npcSpeedMultiplier: 1.0 },
-      { name: "Summer", bgColor: "#ffd3b6", flySpawnRate: 1.5, npcSpeedMultiplier: 1.2 },
-      { name: "Autumn", bgColor: "#ffaaa5", flySpawnRate: 1.2, npcSpeedMultiplier: 0.8 },
-      { name: "Winter", bgColor: "#dcedc1", flySpawnRate: 0.8, npcSpeedMultiplier: 0.7 }
+      { name: "Spring", bgColor: "#a8e6cf", flySpawnRate: 1.0, botSpeedMultiplier: 1.0 },
+      { name: "Summer", bgColor: "#ffd3b6", flySpawnRate: 1.5, botSpeedMultiplier: 1.2 },
+      { name: "Autumn", bgColor: "#ffaaa5", flySpawnRate: 1.2, botSpeedMultiplier: 0.8 },
+      { name: "Winter", bgColor: "#dcedc1", flySpawnRate: 0.8, botSpeedMultiplier: 0.7 }
     ];
     let currentSeasonIndex = 0;
     let seasonTimer = 0;
-    const SEASON_DURATION = 60; // seconds
+    const SEASON_DURATION = 60;
 
-    // Chameleon (player) settings
+    // Day/Night cycle.
+    const DAY_NIGHT_PERIOD = 60;
+    let dayNightTimer = 0;
+
+    // Chameleon settings.
     const BASE_SPEED = 3;
     const INITIAL_RADIUS = 15;
-    // The chameleon’s speed will be computed as BASE_SPEED * (INITIAL_RADIUS / currentRadius)
+    // No slowdown with growth.
     const CHAMELEON_COLORS = {
-      1: "#32CD32",  // Green
-      2: "#FF4500",  // Red
-      3: "#1E90FF",  // Blue
-      4: "#FFD700"   // Yellow
+      player: "#32CD32",
+      bot1: "#FF4500",
+      bot2: "#1E90FF",
+      bot3: "#FFD700",
+      bot4: "#FF69B4",
+      bot5: "#FFA500"
     };
 
-    // Tongue settings
+    // Tongue settings.
     const TONGUE_MAX_LENGTH = 100;
-    const TONGUE_EXTEND_RATE = 3;    // fraction per second (so full extension takes ~1/3 sec)
-    const TONGUE_RETRACT_RATE = 3;   // same speed retracting
+    const TONGUE_EXTEND_RATE = 3;
+    const TONGUE_RETRACT_RATE = 3;
 
-    // Entity counts
+    // Entity counts.
     const NUM_FLIES_INITIAL = 150;
-    const NUM_NPCS = 8;
+    const NUM_BOTS = 5;
     const NUM_TOWERS = 4;
     const NUM_COSMO = 12;
 
-    // Arrays for game entities
+    // Arrays for game entities.
     let flyItems = [];
-    let npcCreatures = [];
-    let towerObjects = [];
+    let towers = [];
     let projectileItems = [];
     let cosmoObjects = [];
     let grid = [];
+    let chameleons = []; // This includes player, bots, and minions.
 
+    // Game state.
     let player = null;
     let cameraOffset = { x: 0, y: 0 };
     const keys = {};
     let gameOver = false;
+    let paused = false;
 
-    // DOM elements
+    // DOM elements.
     const canvas = document.getElementById("gameCanvas");
     const ctx = canvas.getContext("2d");
     canvas.width = VIEWPORT_WIDTH;
     canvas.height = VIEWPORT_HEIGHT;
-    const progressBar = document.getElementById("progressBar");
+    const dayNightCanvas = document.getElementById("dayNightOverlay");
+    const dayNightCtx = dayNightCanvas.getContext("2d");
+    dayNightCanvas.width = VIEWPORT_WIDTH;
+    dayNightCanvas.height = VIEWPORT_HEIGHT;
+    const timeDisplay = document.getElementById("timeDisplay");
+    const playerScoreDisplay = document.getElementById("playerScore");
+    const topScoreDisplay = document.getElementById("topScore");
     const gameOverDiv = document.getElementById("gameOver");
+    const restartBtn = document.getElementById("restartBtn");
+
+    // Load player image.
+    const playerImg = new Image();
+    playerImg.src = "https://via.placeholder.com/50?text=Cham";
+    let playerImgLoaded = false;
+    playerImg.onload = () => { playerImgLoaded = true; };
 
     /****************************
      * Utility Helper Functions *
@@ -187,9 +249,8 @@
     function distance(x1, y1, x2, y2) {
       return Math.hypot(x1 - x2, y1 - y2);
     }
-    // Returns the shortest distance from point p to the line segment vw
     function distancePointToSegment(p, v, w) {
-      const l2 = (w.x - v.x)**2 + (w.y - v.y)**2;
+      const l2 = (w.x - v.x) ** 2 + (w.y - v.y) ** 2;
       if (l2 === 0) return distance(p.x, p.y, v.x, v.y);
       let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
       t = Math.max(0, Math.min(1, t));
@@ -198,6 +259,21 @@
     }
     function randomRange(min, max) {
       return Math.random() * (max - min) + min;
+    }
+    // Blend two hex colors.
+    function blendColors(c1, c2) {
+      c1 = c1.slice(1);
+      c2 = c2.slice(1);
+      let r1 = parseInt(c1.substr(0, 2), 16);
+      let g1 = parseInt(c1.substr(2, 2), 16);
+      let b1 = parseInt(c1.substr(4, 2), 16);
+      let r2 = parseInt(c2.substr(0, 2), 16);
+      let g2 = parseInt(c2.substr(2, 2), 16);
+      let b2 = parseInt(c2.substr(4, 2), 16);
+      let r = Math.floor((r1 + r2) / 2);
+      let g = Math.floor((g1 + g2) / 2);
+      let b = Math.floor((b1 + b2) / 2);
+      return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
     }
 
     /**********************************
@@ -208,9 +284,44 @@
       for (let r = 0; r < ROWS; r++) {
         const row = [];
         for (let c = 0; c < COLS; c++) {
-          row.push(DEFAULT_TILE_COLOR);
+          row.push({ color: DEFAULT_TILE_COLOR, owner: null });
         }
         grid.push(row);
+      }
+    }
+
+    /***************************
+     * Particle System *
+     ***************************/
+    class Particle {
+      constructor(x, y, color) {
+        this.x = x;
+        this.y = y;
+        this.vx = randomRange(-50, 50);
+        this.vy = randomRange(-50, 50);
+        this.alpha = 1;
+        this.color = color;
+        this.size = randomRange(2, 4);
+      }
+      update(dt) {
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+        this.alpha -= dt;
+      }
+      draw(ctx) {
+        ctx.save();
+        ctx.globalAlpha = this.alpha;
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x - cameraOffset.x, this.y - cameraOffset.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+    let particles = [];
+    function spawnParticles(x, y, color, count = 10) {
+      for (let i = 0; i < count; i++) {
+        particles.push(new Particle(x, y, color));
       }
     }
 
@@ -219,49 +330,123 @@
      ***************************/
     class Chameleon {
       /**
-       * Constructs a new Chameleon (player).
-       * @param {string} username - The player's username.
-       * @param {number} x - The starting x-coordinate.
-       * @param {number} y - The starting y-coordinate.
+       * Constructs a new Chameleon.
+       * @param {string} username - The chameleon's name.
+       * @param {number} x - Starting x-coordinate.
+       * @param {number} y - Starting y-coordinate.
+       * @param {boolean} isBot - True if AI-controlled.
        */
-      constructor(username, x, y) {
+      constructor(username, x, y, isBot = false) {
         this.username = username;
         this.x = x;
         this.y = y;
         this.radius = INITIAL_RADIUS;
         this.speed = BASE_SPEED;
-        this.currentColor = CHAMELEON_COLORS[1];
-        this.score = 50; // Starting score
+        this.currentColor = isBot ? username : CHAMELEON_COLORS.player;
+        this.score = 50;
         this.frozenUntil = 0;
-        // For tongue mechanics:
-        this.tongueState = "idle"; // "idle", "extending", "retracting"
-        this.tongueProgress = 0;   // 0 to 1 (0 = not extended, 1 = full extension)
-        this.tongueAngle = 0;      // Angle in radians for tongue direction
-        this.lastAngle = 0;        // Last movement direction (radians)
+        this.isBot = isBot;
+        // For minions, set owner (will be player's username).
+        this.owner = null;
+        // For splitting: for newly created minions.
+        this.justSplit = 0; // seconds remaining for "run away" behavior.
+        this.initialDirection = 0;
+        // Tongue mechanics.
+        this.tongueState = "idle";
+        this.tongueProgress = 0;
+        this.tongueAngle = 0;
+        this.lastAngle = 0;
+        // Bot AI.
+        this.aiTimer = 0;
+        this.aiDirection = randomRange(0, Math.PI * 2);
       }
       update(dt) {
         let dx = 0, dy = 0;
-        if (keys["ArrowUp"]) dy -= 1;
-        if (keys["ArrowDown"]) dy += 1;
-        if (keys["ArrowLeft"]) dx -= 1;
-        if (keys["ArrowRight"]) dx += 1;
-        if (dx !== 0 || dy !== 0) {
-          const len = Math.sqrt(dx * dx + dy * dy);
-          dx /= len;
-          dy /= len;
-          this.lastAngle = Math.atan2(dy, dx);
+        if (this.owner !== null) {
+          // This is a minion; if just split, run in initial direction.
+          if (this.justSplit > 0) {
+            dx = Math.cos(this.initialDirection);
+            dy = Math.sin(this.initialDirection);
+            this.justSplit -= dt;
+          } else {
+            // Otherwise, follow the main player.
+            let targetX = player.x;
+            let targetY = player.y;
+            dx = targetX - this.x;
+            dy = targetY - this.y;
+            let d = Math.sqrt(dx * dx + dy * dy);
+            if (d > 1) {
+              dx /= d;
+              dy /= d;
+            } else {
+              dx = 0;
+              dy = 0;
+            }
+          }
+          // Minions follow at a slightly faster pace.
+          this.x += dx * this.speed * 1.2;
+          this.y += dy * this.speed * 1.2;
+          // Always update color to match player's.
+          this.currentColor = player.currentColor;
+        } else if (this.isBot) {
+          this.aiTimer += dt;
+          if (this.aiTimer > 2) {
+            this.aiDirection = randomRange(0, Math.PI * 2);
+            this.aiTimer = 0;
+          }
+          dx = Math.cos(this.aiDirection);
+          dy = Math.sin(this.aiDirection);
+          this.x += dx * this.speed;
+          this.y += dy * this.speed;
+        } else {
+          // Player controlled.
+          if (keys["ArrowUp"]) dy -= 1;
+          if (keys["ArrowDown"]) dy += 1;
+          if (keys["ArrowLeft"]) dx -= 1;
+          if (keys["ArrowRight"]) dx += 1;
+          if (dx !== 0 || dy !== 0) {
+            const len = Math.sqrt(dx * dx + dy * dy);
+            dx /= len;
+            dy /= len;
+            this.lastAngle = Math.atan2(dy, dx);
+          }
+          this.x += dx * this.speed;
+          this.y += dy * this.speed;
         }
-        // Update position; speed decreases as radius grows:
-        this.speed = BASE_SPEED * (INITIAL_RADIUS / this.radius);
-        this.x += dx * this.speed;
-        this.y += dy * this.speed;
-        // Clamp position within map boundaries
         this.x = Math.max(this.radius, Math.min(this.x, MAP_WIDTH - this.radius));
         this.y = Math.max(this.radius, Math.min(this.y, MAP_HEIGHT - this.radius));
-        // Paint the grid tile under the chameleon
-        const col = Math.floor(this.x / TILE_SIZE);
-        const row = Math.floor(this.y / TILE_SIZE);
-        grid[row][col] = this.currentColor;
+
+        // Territory painting: update all grid cells whose centers are within this.radius.
+        const startCol = Math.floor((this.x - this.radius) / TILE_SIZE);
+        const endCol = Math.floor((this.x + this.radius) / TILE_SIZE);
+        const startRow = Math.floor((this.y - this.radius) / TILE_SIZE);
+        const endRow = Math.floor((this.y + this.radius) / TILE_SIZE);
+        for (let r = startRow; r <= endRow; r++) {
+          for (let c = startCol; c <= endCol; c++) {
+            if (r >= 0 && r < ROWS && c >= 0 && c < COLS) {
+              const cellCenterX = c * TILE_SIZE + TILE_SIZE / 2;
+              const cellCenterY = r * TILE_SIZE + TILE_SIZE / 2;
+              if (distance(this.x, this.y, cellCenterX, cellCenterY) <= this.radius) {
+                let cell = grid[r][c];
+                if (cell.owner === null) {
+                  cell.owner = this.username;
+                  cell.color = this.currentColor;
+                } else if (cell.owner !== this.username) {
+                  // Only convert if our score is higher than the current owner's.
+                  let opp = chameleons.find(ch => ch.username === cell.owner);
+                  if (opp && this.score > opp.score) {
+                    opp.score = Math.max(0, opp.score - 1);
+                    cell.owner = this.username;
+                    cell.color = this.currentColor;
+                    this.score += 2;
+                    spawnParticles(cellCenterX, cellCenterY, this.currentColor, 5);
+                  }
+                }
+              }
+            }
+          }
+        }
+        this.updateTongue(dt);
       }
       updateTongue(dt) {
         if (this.tongueState === "extending") {
@@ -279,18 +464,26 @@
         }
       }
       draw(context) {
-        // Draw chameleon body
-        context.beginPath();
-        context.arc(this.x - cameraOffset.x, this.y - cameraOffset.y, this.radius, 0, Math.PI * 2);
-        context.fillStyle = this.currentColor;
-        context.fill();
-        context.strokeStyle = "#000";
-        context.lineWidth = 2;
-        context.stroke();
-        // Draw tongue if active
+        // For the player (main body) draw the image if loaded.
+        if (!this.isBot && this.owner === null && playerImgLoaded) {
+          context.drawImage(
+            playerImg,
+            this.x - this.radius - cameraOffset.x,
+            this.y - this.radius - cameraOffset.y,
+            this.radius * 2,
+            this.radius * 2
+          );
+        } else {
+          context.beginPath();
+          context.arc(this.x - cameraOffset.x, this.y - cameraOffset.y, this.radius, 0, Math.PI * 2);
+          context.fillStyle = this.currentColor;
+          context.fill();
+          context.strokeStyle = "#000";
+          context.lineWidth = 2;
+          context.stroke();
+        }
         if (this.tongueState !== "idle" && this.tongueProgress > 0) {
           const tongueLength = this.tongueProgress * TONGUE_MAX_LENGTH;
-          // Start point is at edge of chameleon in direction of tongueAngle
           const startX = this.x + Math.cos(this.tongueAngle) * this.radius;
           const startY = this.y + Math.sin(this.tongueAngle) * this.radius;
           const endX = startX + Math.cos(this.tongueAngle) * tongueLength;
@@ -303,53 +496,17 @@
           context.stroke();
         }
       }
-      collidesWith(entity) {
-        return distance(this.x, this.y, entity.x, entity.y) < (this.radius + entity.radius);
+      collidesWith(other) {
+        return distance(this.x, this.y, other.x, other.y) < (this.radius + other.radius);
       }
     }
 
-    class NPC {
-      constructor(x, y, color) {
-        this.x = x;
-        this.y = y;
-        this.radius = INITIAL_RADIUS - 2;
-        this.speed = BASE_SPEED * 0.8;
-        this.direction = randomRange(0, Math.PI * 2);
-        this.color = color;
-      }
-      update() {
-        if (Math.random() < 0.02) {
-          this.direction = randomRange(0, Math.PI * 2);
-        }
-        const dx = Math.cos(this.direction) * this.speed;
-        const dy = Math.sin(this.direction) * this.speed;
-        this.x += dx;
-        this.y += dy;
-        this.x = Math.max(this.radius, Math.min(this.x, MAP_WIDTH - this.radius));
-        this.y = Math.max(this.radius, Math.min(this.y, MAP_HEIGHT - this.radius));
-        const col = Math.floor(this.x / TILE_SIZE);
-        const row = Math.floor(this.y / TILE_SIZE);
-        grid[row][col] = this.color;
-      }
-      draw(context) {
-        context.beginPath();
-        context.arc(this.x - cameraOffset.x, this.y - cameraOffset.y, this.radius, 0, Math.PI * 2);
-        context.fillStyle = this.color;
-        context.fill();
-      }
-      collidesWithFood(food) {
-        return distance(this.x, this.y, food.x, food.y) < (this.radius + food.radius);
-      }
-    }
-
-    // Food items look like flies. For simplicity, we draw them with a small ellipse and two "wings".
     class Food {
       constructor(x, y, radius) {
         this.x = x;
         this.y = y;
         this.radius = radius;
         this.foodValue = 1;
-        // Randomly choose one of two colors for variety
         this.color = (Math.random() < 0.5) ? "#0f0" : "#ff0";
         this.vx = (Math.random() - 0.5) * 20;
         this.vy = (Math.random() - 0.5) * 20;
@@ -363,19 +520,17 @@
       draw(context) {
         context.save();
         context.translate(this.x - cameraOffset.x, this.y - cameraOffset.y);
-        // Draw body
         context.beginPath();
         context.ellipse(0, 0, this.radius, this.radius * 0.6, 0, 0, Math.PI * 2);
         context.fillStyle = this.color;
         context.fill();
-        // Draw wings (simple lines)
         context.strokeStyle = "#000";
         context.lineWidth = 1;
         context.beginPath();
-        context.moveTo(-this.radius, -this.radius*0.4);
-        context.lineTo(-this.radius - 5, -this.radius*0.8);
-        context.moveTo(this.radius, -this.radius*0.4);
-        context.lineTo(this.radius + 5, -this.radius*0.8);
+        context.moveTo(-this.radius, -this.radius * 0.4);
+        context.lineTo(-this.radius - 5, -this.radius * 0.8);
+        context.moveTo(this.radius, -this.radius * 0.4);
+        context.lineTo(this.radius + 5, -this.radius * 0.8);
         context.stroke();
         context.restore();
       }
@@ -387,7 +542,7 @@
         this.y = y;
         this.size = 30;
         this.range = 150;
-        this.fireRate = 2000; // ms
+        this.fireRate = 2000;
         this.projectileSpeed = 100;
         this.lastFireTime = 0;
       }
@@ -465,32 +620,51 @@
             context.fillStyle = "#888";
             drawDiamond(context, this.size/2);
             break;
+          case "speedBoost":
+            context.fillStyle = "#0ff";
+            context.beginPath();
+            context.arc(0, 0, this.size/2, 0, Math.PI*2);
+            context.fill();
+            break;
+          case "invincibility":
+            context.fillStyle = "#ff0";
+            context.beginPath();
+            context.arc(0, 0, this.size/2, 0, Math.PI*2);
+            context.fill();
+            break;
           default:
             context.fillStyle = "#fff";
             context.fillRect(-this.size/2, -this.size/2, this.size, this.size);
         }
         context.restore();
       }
-      applyEffect(player, currentTime) {
-        if (distance(this.x, this.y, player.x, player.y) < (this.size/2 + player.radius)) {
+      applyEffect(chameleon, currentTime) {
+        if (distance(this.x, this.y, chameleon.x, chameleon.y) < (this.size/2 + chameleon.radius)) {
           switch(this.type) {
             case "plant":
-              player.speed += 0.5;
+              chameleon.score += 5;
               break;
             case "moon":
-              player.score += 10;
+              chameleon.score += 10;
               break;
             case "fire":
-              player.score = Math.max(0, player.score - 10);
+              chameleon.score = Math.max(0, chameleon.score - 10);
               break;
             case "water":
-              player.speed = Math.max(1, player.speed - 0.5);
+              // Optional minor effect.
               break;
             case "ice":
-              player.frozenUntil = currentTime + 2000;
+              chameleon.frozenUntil = currentTime + 2000;
               break;
             case "mineral":
-              player.score += 20;
+              chameleon.score += 20;
+              break;
+            case "speedBoost":
+              chameleon.speed += 2;
+              setTimeout(() => { chameleon.speed = BASE_SPEED; }, 5000);
+              break;
+            case "invincibility":
+              chameleon.frozenUntil = currentTime + 5000;
               break;
           }
           return true;
@@ -499,7 +673,7 @@
       }
     }
 
-    // Helper drawing functions for cosmo objects.
+    // Helper drawing functions.
     function drawStar(ctx, cx, cy, innerRadius, outerRadius, points) {
       ctx.beginPath();
       let angle = Math.PI / points;
@@ -539,6 +713,16 @@
     /****************************
      * Initialization Functions *
      ****************************/
+    function initGrid() {
+      grid = [];
+      for (let r = 0; r < ROWS; r++) {
+        const row = [];
+        for (let c = 0; c < COLS; c++) {
+          row.push({ color: DEFAULT_TILE_COLOR, owner: null });
+        }
+        grid.push(row);
+      }
+    }
     function initFlies() {
       flyItems = [];
       for (let i = 0; i < NUM_FLIES_INITIAL; i++) {
@@ -548,27 +732,30 @@
         flyItems.push(new Food(x, y, radius));
       }
     }
-    function initNPCs() {
-      npcCreatures = [];
-      const npcColors = ["#FF69B4", "#FFA500", "#7B68EE"];
-      for (let i = 0; i < NUM_NPCS; i++) {
+    function initBots() {
+      // Remove existing bots/minions (only keep player's main body and minions).
+      chameleons = chameleons.filter(ch => ch.owner === null && !ch.isBot);
+      const botNames = Object.keys(CHAMELEON_COLORS).filter(key => key !== "player");
+      for (let i = 0; i < NUM_BOTS; i++) {
         const x = randomRange(0, MAP_WIDTH);
         const y = randomRange(0, MAP_HEIGHT);
-        const color = npcColors[i % npcColors.length];
-        npcCreatures.push(new NPC(x, y, color));
+        const name = botNames[i % botNames.length];
+        const bot = new Chameleon(name, x, y, true);
+        bot.currentColor = CHAMELEON_COLORS[name];
+        chameleons.push(bot);
       }
     }
     function initTowers() {
-      towerObjects = [];
+      towers = [];
       for (let i = 0; i < NUM_TOWERS; i++) {
         const x = randomRange(0, MAP_WIDTH);
         const y = randomRange(0, MAP_HEIGHT);
-        towerObjects.push(new Tower(x, y));
+        towers.push(new Tower(x, y));
       }
     }
     function initCosmoObjects() {
       cosmoObjects = [];
-      const types = ["plant", "moon", "fire", "water", "ice", "mineral"];
+      const types = ["plant", "moon", "fire", "water", "ice", "mineral", "speedBoost", "invincibility"];
       for (let i = 0; i < NUM_COSMO; i++) {
         const type = types[Math.floor(randomRange(0, types.length))];
         const x = randomRange(0, MAP_WIDTH);
@@ -576,52 +763,143 @@
         cosmoObjects.push(new CosmoObject(x, y, type));
       }
     }
+    function initGridAndChameleons() {
+      initGrid();
+      chameleons = [];
+    }
     function initPlayer(username) {
       const x = randomRange(0, MAP_WIDTH);
       const y = randomRange(0, MAP_HEIGHT);
-      player = new Chameleon(username, x, y);
+      initGridAndChameleons();
+      player = new Chameleon(username, x, y, false);
+      chameleons.push(player);
     }
+
+    /**********************
+     * Splitting & Merging *
+     **********************/
+    function splitPlayer() {
+      if (player.radius > 20) {
+        const newRadius = player.radius * 0.5;
+        const newScore = player.score * 0.5;
+        player.radius = newRadius;
+        player.score = newScore;
+        // Spawn a minion with a slight random offset.
+        const offsetAngle = randomRange(0, 2 * Math.PI);
+        const offsetDist = newRadius + 5;
+        const minionX = player.x + Math.cos(offsetAngle) * offsetDist;
+        const minionY = player.y + Math.sin(offsetAngle) * offsetDist;
+        const minion = new Chameleon(player.username + "_minion_" + Date.now(), minionX, minionY, false);
+        minion.radius = newRadius;
+        minion.score = newScore;
+        minion.owner = player.username;
+        // Newly split minions run in the initial split direction for 3 seconds.
+        minion.justSplit = 3.0;
+        minion.initialDirection = offsetAngle;
+        chameleons.push(minion);
+      }
+    }
+    function mergeMinions() {
+      chameleons.forEach(ch => {
+        if (ch.owner === player.username && player.collidesWith(ch)) {
+          player.score += ch.score;
+          player.radius += ch.radius * 0.1;
+          ch.frozenUntil = Infinity;
+          spawnParticles(ch.x, ch.y, player.currentColor, 10);
+        }
+      });
+      chameleons = chameleons.filter(ch => ch.frozenUntil !== Infinity);
+    }
+
+    /**********************
+     * Camera and Drawing *
+     **********************/
     function updateCamera() {
       cameraOffset.x = player.x - VIEWPORT_WIDTH / 2;
       cameraOffset.y = player.y - VIEWPORT_HEIGHT / 2;
       cameraOffset.x = Math.max(0, Math.min(cameraOffset.x, MAP_WIDTH - VIEWPORT_WIDTH));
       cameraOffset.y = Math.max(0, Math.min(cameraOffset.y, MAP_HEIGHT - VIEWPORT_HEIGHT));
     }
-    function createMilestoneText(text) {
-      const div = document.createElement("div");
-      div.className = "milestoneText";
-      div.innerText = text;
-      document.body.appendChild(div);
-      const px = player.x - cameraOffset.x;
-      const py = player.y - cameraOffset.y;
-      div.style.left = px + "px";
-      div.style.top = py + "px";
-      setTimeout(() => { div.style.opacity = "0"; }, 1000);
-      setTimeout(() => { document.body.removeChild(div); }, 1500);
+    function drawGrid() {
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          const cell = grid[r][c];
+          const x = c * TILE_SIZE - cameraOffset.x;
+          const y = r * TILE_SIZE - cameraOffset.y;
+          ctx.fillStyle = cell.color;
+          ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+          ctx.lineWidth = 1;
+          ctx.shadowBlur = 4;
+          ctx.shadowColor = "rgba(255,255,255,0.3)";
+          ctx.strokeStyle = "rgba(255,255,255,0.3)";
+          ctx.beginPath();
+          if (c < COLS - 1 && grid[r][c+1].color !== cell.color) {
+            ctx.moveTo(x + TILE_SIZE, y);
+            ctx.lineTo(x + TILE_SIZE, y + TILE_SIZE);
+          }
+          if (r < ROWS - 1 && grid[r+1][c].color !== cell.color) {
+            ctx.moveTo(x, y + TILE_SIZE);
+            ctx.lineTo(x + TILE_SIZE, y + TILE_SIZE);
+          }
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+          const baseColors = [DEFAULT_TILE_COLOR, CHAMELEON_COLORS.player, CHAMELEON_COLORS.bot1, CHAMELEON_COLORS.bot2, CHAMELEON_COLORS.bot3, CHAMELEON_COLORS.bot4, CHAMELEON_COLORS.bot5];
+          if (baseColors.indexOf(cell.color) === -1) {
+            ctx.beginPath();
+            ctx.arc(x + TILE_SIZE/2, y + TILE_SIZE/2, 3, 0, Math.PI * 2);
+            ctx.fillStyle = "#FFF";
+            ctx.fill();
+          }
+        }
+      }
+    }
+
+    function updateDayNight(dt) {
+      dayNightTimer += dt;
+      if (dayNightTimer > DAY_NIGHT_PERIOD) dayNightTimer = 0;
+      const brightness = 0.5 + 0.5 * Math.sin((2 * Math.PI * dayNightTimer) / DAY_NIGHT_PERIOD);
+      dayNightCtx.clearRect(0, 0, dayNightCanvas.width, dayNightCanvas.height);
+      dayNightCtx.fillStyle = "rgba(0, 0, 0, " + (1 - brightness) * 0.5 + ")";
+      dayNightCtx.fillRect(0, 0, dayNightCanvas.width, dayNightCanvas.height);
     }
 
     /**********************
-     * Main Game Loop *
+     * Competitive Mechanics *
      **********************/
-    let lastTime = performance.now();
-    function gameLoop(currentTime) {
-      const dt = (currentTime - lastTime) / 1000;
-      lastTime = currentTime;
-
-      // Season cycling
-      seasonTimer += dt;
-      if (seasonTimer > SEASON_DURATION) {
-        seasonTimer = 0;
-        currentSeasonIndex = (currentSeasonIndex + 1) % SEASONS.length;
+    function handleChameleonCollisions() {
+      for (let i = 0; i < chameleons.length; i++) {
+        for (let j = i + 1; j < chameleons.length; j++) {
+          const a = chameleons[i];
+          const b = chameleons[j];
+          // Skip collisions between your own minions and your main body.
+          if (a.owner === player.username && b.owner === player.username) continue;
+          if (a.collidesWith(b)) {
+            if (a.radius > b.radius * 1.2 && a.score > b.score) {
+              a.score += b.score * 0.5;
+              a.radius += b.radius * 0.2;
+              spawnParticles(b.x, b.y, a.currentColor, 20);
+              resetChameleon(b);
+            } else if (b.radius > a.radius * 1.2 && b.score > a.score) {
+              b.score += a.score * 0.5;
+              b.radius += a.radius * 0.2;
+              spawnParticles(a.x, a.y, b.currentColor, 20);
+              resetChameleon(a);
+            }
+          }
+        }
       }
-
-      // Update player (if not frozen)
-      if (currentTime > player.frozenUntil) {
-        player.update(dt);
+    }
+    function resetChameleon(ch) {
+      if (ch.isBot || ch.owner !== null) {
+        ch.x = randomRange(0, MAP_WIDTH);
+        ch.y = randomRange(0, MAP_HEIGHT);
+        ch.radius = INITIAL_RADIUS;
+        ch.score = 50;
+      } else {
+        gameOver = true;
       }
-      player.updateTongue(dt);
-
-      // If tongue is active, check collision with flies along the tongue line
+    }
+    function handleTongueBotCollisions() {
       if (player.tongueState !== "idle" && player.tongueProgress > 0) {
         const tongueLength = player.tongueProgress * TONGUE_MAX_LENGTH;
         const start = {
@@ -632,20 +910,74 @@
           x: start.x + Math.cos(player.tongueAngle) * tongueLength,
           y: start.y + Math.sin(player.tongueAngle) * tongueLength
         };
-        // Check each fly
-        for (let i = flyItems.length - 1; i >= 0; i--) {
-          const fly = flyItems[i];
-          const d = distancePointToSegment({ x: fly.x, y: fly.y }, start, end);
-          if (d < fly.radius + 2) {  // If within grabbing distance
-            flyItems.splice(i, 1);
-            player.score += 5;
-            // Grow the chameleon slightly
-            player.radius += 0.5;
+        chameleons.forEach(ch => {
+          if (!ch.isBot) return;
+          const d = distancePointToSegment({ x: ch.x, y: ch.y }, start, end);
+          if (d < ch.radius + 2) {
+            ch.frozenUntil = performance.now() + 3000;
+            player.score += 10;
           }
-        }
+        });
       }
+    }
 
-      // Spawn flies probabilistically based on season
+    /**********************
+     * Scoreboard & Timer *
+     **********************/
+    function updateScoreboard(dt) {
+      elapsedTime += dt;
+      const timeRemaining = Math.max(0, GAME_DURATION - elapsedTime);
+      timeDisplay.innerText = "Time: " + Math.floor(timeRemaining);
+      playerScoreDisplay.innerText = "You: " + Math.floor(player.score);
+      let top = 0;
+      chameleons.forEach(ch => {
+        if (ch.isBot && ch.score > top) top = ch.score;
+      });
+      topScoreDisplay.innerText = "Top: " + Math.floor(top);
+      if (timeRemaining <= 0) {
+        gameOver = true;
+        declareWinner();
+      }
+    }
+    function declareWinner() {
+      let winner = chameleons[0];
+      chameleons.forEach(ch => {
+        if (ch.score > winner.score) winner = ch;
+      });
+      gameOverDiv.innerHTML = "Game Over! Winner: " + winner.username;
+      gameOverDiv.style.display = "block";
+    }
+
+    /**********************
+     * Main Game Loop *
+     **********************/
+    let lastTime = performance.now();
+    function gameLoop(currentTime) {
+      if (paused) {
+        lastTime = currentTime;
+        requestAnimationFrame(gameLoop);
+        return;
+      }
+      const dt = (currentTime - lastTime) / 1000;
+      lastTime = currentTime;
+
+      updateDayNight(dt);
+
+      seasonTimer += dt;
+      if (seasonTimer > SEASON_DURATION) {
+        seasonTimer = 0;
+        currentSeasonIndex = (currentSeasonIndex + 1) % SEASONS.length;
+      }
+      updateScoreboard(dt);
+
+      chameleons.forEach(ch => {
+        if (currentTime > ch.frozenUntil) {
+          ch.update(dt);
+        }
+        ch.updateTongue(dt);
+      });
+      handleTongueBotCollisions();
+
       if (Math.random() < SEASONS[currentSeasonIndex].flySpawnRate * dt * 0.5) {
         const x = randomRange(0, MAP_WIDTH);
         const y = randomRange(0, MAP_HEIGHT);
@@ -653,23 +985,16 @@
         flyItems.push(new Food(x, y, radius));
       }
       flyItems.forEach(fly => fly.update(dt));
-      // Check collision between chameleon and flies (if not using tongue)
       for (let i = flyItems.length - 1; i >= 0; i--) {
         if (player.collidesWith(flyItems[i])) {
           flyItems.splice(i, 1);
           player.score += 5;
           player.radius += 0.5;
+          spawnParticles(player.x, player.y, player.currentColor, 5);
         }
       }
 
-      // Update NPCs (their speed is modified by season)
-      npcCreatures.forEach(npc => {
-        npc.speed = BASE_SPEED * SEASONS[currentSeasonIndex].npcSpeedMultiplier;
-        npc.update();
-      });
-
-      // Towers fire projectiles if player is in range
-      towerObjects.forEach(tower => {
+      towers.forEach(tower => {
         if (distance(tower.x, tower.y, player.x, player.y) < tower.range &&
             currentTime - tower.lastFireTime > tower.fireRate) {
           const angle = Math.atan2(player.y - tower.y, player.x - tower.x);
@@ -677,10 +1002,9 @@
           tower.lastFireTime = currentTime;
         }
       });
-      // Update projectiles and check collision with player
+      projectileItems.forEach(proj => proj.update(dt));
       for (let i = projectileItems.length - 1; i >= 0; i--) {
         const proj = projectileItems[i];
-        proj.update(dt);
         if (proj.x < 0 || proj.x > MAP_WIDTH || proj.y < 0 || proj.y > MAP_HEIGHT) {
           projectileItems.splice(i, 1);
           continue;
@@ -691,68 +1015,36 @@
         }
       }
 
-      // Cosmo objects apply effects when player is near
       for (let i = cosmoObjects.length - 1; i >= 0; i--) {
         const obj = cosmoObjects[i];
         if (obj.applyEffect(player, currentTime)) {
           cosmoObjects.splice(i, 1);
-          const types = ["plant", "moon", "fire", "water", "ice", "mineral"];
+          const types = ["plant", "moon", "fire", "water", "ice", "mineral", "speedBoost", "invincibility"];
           const newType = types[Math.floor(randomRange(0, types.length))];
           cosmoObjects.push(new CosmoObject(randomRange(0, MAP_WIDTH), randomRange(0, MAP_HEIGHT), newType));
         }
       }
 
+      particles.forEach(p => p.update(dt));
+      particles = particles.filter(p => p.alpha > 0);
+
+      handleChameleonCollisions();
+      if (keys["m"]) mergeMinions();
+
       updateCamera();
 
-      // Draw the scene
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      // Draw background based on season
       ctx.fillStyle = SEASONS[currentSeasonIndex].bgColor;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      // Draw grid tiles
-      for (let r = 0; r < ROWS; r++) {
-        for (let c = 0; c < COLS; c++) {
-          ctx.fillStyle = grid[r][c];
-          let x = c * TILE_SIZE - cameraOffset.x;
-          let y = r * TILE_SIZE - cameraOffset.y;
-          ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
-        }
-      }
-      // Draw cosmo objects
+      drawGrid();
       cosmoObjects.forEach(obj => obj.draw(ctx));
-      // Draw flies
       flyItems.forEach(fly => fly.draw(ctx));
-      // Draw NPCs
-      npcCreatures.forEach(npc => npc.draw(ctx));
-      // Draw towers
-      towerObjects.forEach(tower => tower.draw(ctx));
-      // Draw projectiles
+      towers.forEach(tower => tower.draw(ctx));
       projectileItems.forEach(proj => proj.draw(ctx));
-      // Draw player (chameleon)
-      player.draw(ctx);
+      chameleons.forEach(ch => ch.draw(ctx));
+      particles.forEach(p => p.draw(ctx));
 
-      // Calculate territory coverage (percentage of grid painted with player's color)
-      let painted = 0;
-      for (let r = 0; r < ROWS; r++) {
-        for (let c = 0; c < COLS; c++) {
-          if (grid[r][c] === player.currentColor) painted++;
-        }
-      }
-      const coveragePercent = Math.min(100, (painted / (ROWS * COLS)) * 100);
-      progressBar.style.width = coveragePercent.toFixed(1) + "%";
-      progressBar.innerText = "Coverage: " + Math.floor(coveragePercent) + "%";
-
-      // Milestone celebration
-      if (coveragePercent > 50 && coveragePercent < 60) {
-        createMilestoneText("Halfway There!");
-      }
-      // End game condition: if score drops too low
-      if (player.score <= 0) {
-        gameOver = true;
-      }
-      if (gameOver) {
-        gameOverDiv.style.display = "block";
-      } else {
+      if (!gameOver) {
         requestAnimationFrame(gameLoop);
       }
     }
@@ -766,17 +1058,26 @@
         key = key.toLowerCase();
       }
       keys[key] = true;
-      // Change chameleon color with number keys
-      if (e.key === '1') player.currentColor = CHAMELEON_COLORS[1];
-      else if (e.key === '2') player.currentColor = CHAMELEON_COLORS[2];
-      else if (e.key === '3') player.currentColor = CHAMELEON_COLORS[3];
-      else if (e.key === '4') player.currentColor = CHAMELEON_COLORS[4];
-      // Activate tongue on spacebar press if idle
+      if (!player?.isBot) {
+        if (e.key === '1') player.currentColor = CHAMELEON_COLORS.player;
+        else if (e.key === '2') player.currentColor = CHAMELEON_COLORS.bot1;
+        else if (e.key === '3') player.currentColor = CHAMELEON_COLORS.bot2;
+        else if (e.key === '4') player.currentColor = CHAMELEON_COLORS.bot3;
+      }
       if (e.key === ' ' && player.tongueState === "idle") {
         player.tongueState = "extending";
         player.tongueProgress = 0;
-        // Set tongue direction to last movement angle (or default to 0)
         player.tongueAngle = (player.lastAngle !== undefined) ? player.lastAngle : 0;
+      }
+      if (e.key.toLowerCase() === "s") {
+        splitPlayer();
+      }
+      if (e.key.toLowerCase() === "m") {
+        mergeMinions();
+      }
+      if (e.key.toLowerCase() === "p") {
+        paused = !paused;
+        document.getElementById("pauseOverlay").style.display = paused ? "flex" : "none";
       }
     });
     window.addEventListener("keyup", (e) => {
@@ -791,6 +1092,8 @@
       VIEWPORT_HEIGHT = window.innerHeight;
       canvas.width = VIEWPORT_WIDTH;
       canvas.height = VIEWPORT_HEIGHT;
+      dayNightCanvas.width = VIEWPORT_WIDTH;
+      dayNightCanvas.height = VIEWPORT_HEIGHT;
     });
 
     /***********************
@@ -805,49 +1108,78 @@
           initGame(username);
         }
       });
+      restartBtn.addEventListener("click", () => {
+        initGame(player.username);
+        gameOverDiv.style.display = "none";
+      });
     });
     function initGame(username) {
       initGrid();
+      flyItems = [];
+      towers = [];
+      projectileItems = [];
+      cosmoObjects = [];
+      particles = [];
+      chameleons = [];
+      elapsedTime = 0;
       initFlies();
-      initNPCs();
-      initTowers();
       initCosmoObjects();
+      initTowers();
       initPlayer(username);
+      initBots();
       gameOver = false;
+      paused = false;
+      document.getElementById("pauseOverlay").style.display = "none";
       gameOverDiv.style.display = "none";
       requestAnimationFrame(gameLoop);
     }
     function initPlayer(username) {
       const x = randomRange(0, MAP_WIDTH);
       const y = randomRange(0, MAP_HEIGHT);
+      initGridAndChameleons();
+      player = new Chameleon(username, x, y, false);
+      chameleons.push(player);
+    }
+    function initBots() {
+      const botNames = Object.keys(CHAMELEON_COLORS).filter(key => key !== "player");
+      for (let i = 0; i < NUM_BOTS; i++) {
+        const x = randomRange(0, MAP_WIDTH);
+        const y = randomRange(0, MAP_HEIGHT);
+        const name = botNames[i % botNames.length];
+        const bot = new Chameleon(name, x, y, true);
+        bot.currentColor = CHAMELEON_COLORS[name];
+        chameleons.push(bot);
+      }
+    }
+    function initGridAndChameleons() {
       initGrid();
-      player = new Chameleon(username, x, y);
+      chameleons = [];
     }
 
     /************************************
      * PEP 257–Style Documentation Block
      ************************************
-     * Chameleon Nature Conquest
+     * Chameleon Clash Redux: Domain Duel Ultimate
      *
-     * This file implements an open-world territory control game inspired by Paper.io and Agar.io,
-     * enriched with natural elements and chameleon-specific mechanics. The player controls a chameleon
-     * that paints the grid-based world with its current color as it moves, adapts and grows (becoming slower),
-     * and can extend its tongue (via the spacebar) to grab food (rendered as flies).
+     * This file implements a competitive, open‐world territory control game with advanced mechanics.
+     * You and AI-controlled bots roam an arena and claim territory using a grid system. Each grid cell
+     * stores both a color and an owner; converting an opponent’s cell (if your score is higher) awards bonus points.
      *
-     * Additional features include roaming NPCs that claim territory, defensive towers that fire projectiles,
-     * cosmic objects that grant temporary effects, and seasonal cycling that alters background colors, fly
-     * spawn rates, and NPC speeds.
-     *
-     * Controls:
-     *   - Arrow keys: Move the chameleon.
-     *   - Keys 1–4: Change the chameleon's color.
-     *   - Spacebar: Extend/retract the tongue to grab food.
-     *
-     * The merged progress bar at the top displays the percentage of the world painted with the player's color.
-     * A login overlay prompts for a username before starting the game.
+     * New features include:
+     *   - **Splitting Mechanic:** Press "S" to split your chameleon into friendly minions that initially run
+     *     away (for 3 seconds) and then follow you. They automatically update their color to match yours.
+     *   - **Merging Mechanic:** Press "M" to merge nearby minions back into your main body.
+     *   - **Revised Collision Rules:** You can only consume an opponent if you are at least 20% larger and have a higher score.
+     *   - **Adaptive Territory Conversion:** Cells are claimed based on the area your chameleon covers.
+     *     Converting an opponent’s cell awards bonus points and spawns particle effects.
+     *   - **Enhanced Visual Effects:** Glowing grid boundaries, mix indicators, particle effects, and a day/night overlay.
+     *   - **Chameleon Rendering:** The player’s chameleon is drawn using an image, while bots are rendered as circles.
+     *   - **Minion Behavior:** Minions (spawned via splitting) follow you autonomously after a short “run away” period.
+     *   - **Controls:** Arrow keys to move, keys 1–4 to change color, spacebar to extend your tongue (grab flies/stun bots),
+     *     S to split, M to merge minions, and P to pause.
      *
      * Repository Structure:
-     *   This file is self-contained and follows a style similar to Mentagon Multiplayer Evolved.
+     *   This file is self-contained and styled similarly to Mentagon Multiplayer Evolved.
      ************************************/
   </script>
 </body>
