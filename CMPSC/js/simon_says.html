@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Simon Says Game</title>
+  <style>
+    /* CSS styling for the Simon Says game */
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin-top: 50px;
+    }
+    .color-button {
+      width: 100px;
+      height: 100px;
+      display: inline-block;
+      margin: 10px;
+      border-radius: 10px;
+      cursor: pointer;
+      opacity: 0.8;
+    }
+    .red { background-color: red; }
+    .green { background-color: green; }
+    .blue { background-color: blue; }
+    .yellow { background-color: yellow; }
+    .active { opacity: 1; }
+  </style>
+</head>
+<body>
+  <h1>Simon Says</h1>
+  <p id="message">Click "Start" to begin.</p>
+  <button id="start-button">Start</button>
+  <div id="game-board">
+    <div class="color-button red" data-color="red"></div>
+    <div class="color-button green" data-color="green"></div>
+    <div class="color-button blue" data-color="blue"></div>
+    <div class="color-button yellow" data-color="yellow"></div>
+  </div>
+  <script>
+    /**
+     * Simon Says Game Implementation.
+     * This game generates a sequence of colors and asks the player to reproduce it.
+     * With each successful round, the sequence length increases by one.
+     */
+
+    const colors = ["red", "green", "blue", "yellow"];
+    let sequence = [];
+    let userSequence = [];
+    let awaitingUserInput = false;
+
+    /**
+     * Generates a new sequence by appending a random color.
+     *
+     * @param {Array} currentSequence - The current game sequence.
+     * @returns {Array} A new sequence with one additional random color.
+     */
+    function generateSequence(currentSequence) {
+      const newSequence = currentSequence.slice();
+      const randomColor = colors[Math.floor(Math.random() * colors.length)];
+      newSequence.push(randomColor);
+      return newSequence;
+    }
+
+    /**
+     * Checks if the user's sequence matches the correct sequence.
+     *
+     * @param {Array} userSeq - The sequence input by the user.
+     * @param {Array} correctSeq - The correct game sequence.
+     * @returns {boolean} True if both sequences match; false otherwise.
+     */
+    function checkSequence(userSeq, correctSeq) {
+      if (userSeq.length !== correctSeq.length) return false;
+      for (let i = 0; i < userSeq.length; i++) {
+        if (userSeq[i] !== correctSeq[i]) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    /**
+     * Plays the current sequence by highlighting the color buttons in order.
+     */
+    function playSequence() {
+      let delay = 0;
+      awaitingUserInput = false;
+      userSequence = [];
+      sequence.forEach((color) => {
+        setTimeout(() => {
+          highlightButton(color);
+        }, delay);
+        delay += 600;
+      });
+      // Enable user input after the sequence has been played.
+      setTimeout(() => {
+        awaitingUserInput = true;
+        document.getElementById("message").textContent = "Your turn!";
+      }, delay);
+    }
+
+    /**
+     * Highlights the button corresponding to the given color.
+     *
+     * @param {string} color - The color of the button to highlight.
+     */
+    function highlightButton(color) {
+      const button = document.querySelector(`.color-button[data-color="${color}"]`);
+      button.classList.add("active");
+      setTimeout(() => {
+        button.classList.remove("active");
+      }, 300);
+    }
+
+    /**
+     * Handles the click event on a color button.
+     * Records the user’s input, checks for correctness, and either continues the game or ends it.
+     *
+     * @param {Event} event - The click event on a color button.
+     */
+    function handleColorClick(event) {
+      if (!awaitingUserInput) return;
+      const selectedColor = event.target.getAttribute("data-color");
+      userSequence.push(selectedColor);
+      highlightButton(selectedColor);
+
+      // Verify each step as the user enters the sequence.
+      for (let i = 0; i < userSequence.length; i++) {
+        if (userSequence[i] !== sequence[i]) {
+          gameOver();
+          return;
+        }
+      }
+
+      // If the full sequence was correctly reproduced, advance to the next round.
+      if (userSequence.length === sequence.length) {
+        document.getElementById("message").textContent = "Good job! Next round...";
+        setTimeout(() => {
+          sequence = generateSequence(sequence);
+          playSequence();
+        }, 1000);
+      }
+    }
+
+    /**
+     * Starts a new game by resetting the sequence and beginning the first round.
+     */
+    function startGame() {
+      sequence = [];
+      userSequence = [];
+      document.getElementById("message").textContent = "Watch the sequence!";
+      sequence = generateSequence(sequence);
+      playSequence();
+    }
+
+    /**
+     * Ends the game and displays the final round reached.
+     */
+    function gameOver() {
+      awaitingUserInput = false;
+      document.getElementById("message").textContent =
+        "Game Over! You reached round " + sequence.length + ". Click 'Start' to try again.";
+    }
+
+    // Attach event listeners to the color buttons and start button.
+    document.querySelectorAll(".color-button").forEach(button => {
+      button.addEventListener("click", handleColorClick);
+    });
+    document.getElementById("start-button").addEventListener("click", startGame);
+  </script>
+</body>
+</html>

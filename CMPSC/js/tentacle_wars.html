@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Color Conquest</title>
+  <style>
+    /* Styling for Color Conquest game canvas */
+    body {
+      margin: 0;
+      background: #000;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+    }
+    canvas {
+      display: block;
+      margin: 0 auto;
+      background: #111;
+      border: 2px solid #555;
+    }
+    #info {
+      color: #fff;
+      text-align: center;
+      padding: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div id="info">
+    Click on your planet (Blue) then click on a target planet to send troops.
+    Conquer neutral planets (Gray) and defeat enemy colors!
+  </div>
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+  <script>
+    /**
+     * Color Conquest Game
+     *
+     * In this game, different colored factions (blue, red, green) vie for control over planets.
+     * Each planet is a circle displaying its troop count. Neutral planets are gray.
+     * The player controls the blue faction.
+     * Players send troops by clicking a planet they own and then clicking a target planet.
+     * Fleets travel from source to target and, upon arrival, simulate a battle.
+     * If the attacking fleet has more troops, the target is conquered (and any excess becomes its new troop count).
+     * Otherwise, the defender's troop count is reduced, and if depleted, the planet becomes neutral.
+     * Enemy planets (red and green) perform AI moves every few seconds.
+     */
+
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Define colors for factions.
+    const planetColors = {
+      blue: '#1E90FF',  // Player faction.
+      red: '#FF4500',   // Enemy faction 1.
+      green: '#32CD32', // Enemy faction 2.
+      neutral: '#808080'
+    };
+
+    let planets = [];
+    let fleets = [];
+    let selectedPlanet = null;
+    let lastUpdateTime = performance.now();
+    let aiTimer = 0;
+
+    // Game settings.
+    const numPlanets = 15;
+    const planetMinRadius = 20;
+    const planetMaxRadius = 40;
+    const growthRate = 0.2; // Troops added per second.
+    const fleetSpeed = 100; // Fleet speed in pixels per second.
+
+    /**
+     * Initializes the game by creating planets with random positions, sizes, and owners.
+     */
+    function initGame() {
+      planets = [];
+      fleets = [];
+      selectedPlanet = null;
+      // Create random planets.
+      for (let i = 0; i < numPlanets; i++) {
+        const radius = planetMinRadius + Math.random() * (planetMaxRadius - planetMinRadius);
+        const x = radius + Math.random() * (canvas.width - 2 * radius);
+        const y = radius + Math.random() * (canvas.height - 2 * radius);
+        let owner = null;
+        const rand = Math.random();
+        // Approximately 20% chance each for blue, red, green; else neutral.
+        if (rand < 0.2) {
+          owner = 'blue';
+        } else if (rand < 0.4) {
+          owner = 'red';
+        } else if (rand < 0.6) {
+          owner = 'green';
+        } else {
+          owner = null;
+        }
+        // Set initial troop counts.
+        let troops = owner ? Math.floor(10 + Math.random() * 20) : Math.floor(5 + Math.random() * 10);
+        planets.push({ x, y, radius, owner, troops, troopBuffer: 0 });
+      }
+    }
+
+    /**
+     * Returns the Euclidean distance between two points.
+     *
+     * @param {Object} p1 - A point with properties x and y.
+     * @param {Object} p2 - A point with properties x and y.
+     * @returns {number} The Euclidean distance.
+     */
+    function distance(p1, p2) {
+      return Math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2);
+    }
+
+    /**
+     * Draws all planets on the canvas.
+     */
+    function drawPlanets() {
+      planets.forEach(planet => {
+        ctx.beginPath();
+        ctx.arc(planet.x, planet.y, planet.radius, 0, Math.PI * 2);
+        // Fill with faction color or neutral color.
+        ctx.fillStyle = planet.owner ? planetColors[planet.owner] : planetColors.neutral;
+        ctx.fill();
+        // Draw border; highlight if selected.
+        ctx.lineWidth = (selectedPlanet === planet) ? 4 : 2;
+        ctx.strokeStyle = (selectedPlanet === planet) ? '#FFFF00' : '#000';
+        ctx.stroke();
+        // Display troop count.
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 16px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(Math.floor(planet.troops), planet.x, planet.y);
+      });
+    }
+
+    /**
+     * Draws all fleets (troop movements) on the canvas.
+     */
+    function drawFleets() {
+      fleets.forEach(fleet => {
+        ctx.beginPath();
+        ctx.arc(fleet.x, fleet.y, 5, 0, Math.PI * 2);
+        ctx.fillStyle = planetColors[fleet.owner];
+        ctx.fill();
+      });
+    }
+
+    /**
+     * Updates each planet’s troop count based on the growth rate and elapsed time.
+     *
+     * @param {number} deltaTime - Elapsed time in seconds.
+     */
+    function updatePlanets(deltaTime) {
+      planets.forEach(planet => {
+        if (planet.owner) {
+          planet.troopBuffer += growthRate * deltaTime;
+          if (planet.troopBuffer >= 1) {
+            const addTroops = Math.floor(planet.troopBuffer);
+            planet.troops += addTroops;
+            planet.troopBuffer -= addTroops;
+          }
+        }
+      });
+    }
+
+    /**
+     * Creates a fleet that moves from the source planet to the target planet,
+     * sending half of the source planet’s troops.
+     *
+     * @param {Object} source - The source planet.
+     * @param {Object} target - The target planet.
+     */
+    function createFleet(source, target) {
+      const sendTroops = Math.floor(source.troops / 2);
+      if (sendTroops < 1) return;
+      source.troops -= sendTroops;
+      fleets.push({
+        source: source,
+        target: target,
+        owner: source.owner,
+        troops: sendTroops,
+        x: source.x,
+        y: source.y,
+        progress: 0 // Progress from 0 to 1 along the trajectory.
+      });
+    }
+
+    /**
+     * Updates fleet positions based on fleet speed and elapsed time.
+     *
+     * @param {number} deltaTime - Elapsed time in seconds.
+     */
+    function updateFleets(deltaTime) {
+      // Use a copy of fleets array to safely remove elements.
+      for (let i = fleets.length - 1; i >= 0; i--) {
+        const fleet = fleets[i];
+        const start = { x: fleet.source.x, y: fleet.source.y };
+        const end = { x: fleet.target.x, y: fleet.target.y };
+        const dist = distance(start, end);
+        const travelDistance = fleetSpeed * deltaTime;
+        fleet.progress += travelDistance / dist;
+        if (fleet.progress >= 1) {
+          // Fleet reached its destination; simulate battle.
+          resolveBattle(fleet, fleet.target);
+          fleets.splice(i, 1);
+        } else {
+          // Update fleet position along the straight line.
+          fleet.x = start.x + (end.x - start.x) * fleet.progress;
+          fleet.y = start.y + (end.y - start.y) * fleet.progress;
+        }
+      }
+    }
+
+    /**
+     * Simulates a battle when a fleet reaches its target planet.
+     * If the target is owned by the same faction, the fleet reinforces it.
+     * Otherwise, if the attacking troops exceed the target's troops, the planet is conquered.
+     * If the attacker’s troops are fewer, the defender’s troop count is reduced.
+     * If equal, the planet becomes neutral.
+     *
+     * @param {Object} fleet - The arriving fleet.
+     * @param {Object} target - The target planet.
+     */
+    function resolveBattle(fleet, target) {
+      if (target.owner === fleet.owner) {
+        // Reinforcement.
+        target.troops += fleet.troops;
+      } else {
+        if (fleet.troops > target.troops) {
+          // Attacker conquers the planet.
+          target.owner = fleet.owner;
+          target.troops = fleet.troops - target.troops;
+        } else if (fleet.troops < target.troops) {
+          // Defender wins, reducing troop count.
+          target.troops -= fleet.troops;
+        } else {
+          // Equal forces leave the planet neutral.
+          target.owner = null;
+          target.troops = 0;
+        }
+      }
+    }
+
+    /**
+     * Processes AI moves for enemy planets (red and green).
+     * Every few seconds, each enemy planet with enough troops sends a fleet
+     * to the nearest planet that is not owned by the same faction.
+     *
+     * @param {number} deltaTime - Elapsed time in seconds.
+     */
+    function processAIMoves(deltaTime) {
+      aiTimer += deltaTime;
+      if (aiTimer < 3) return; // AI moves every 3 seconds.
+      aiTimer = 0;
+      planets.forEach(planet => {
+        if (planet.owner && planet.owner !== 'blue' && planet.troops > 20) {
+          let target = null;
+          let minDist = Infinity;
+          planets.forEach(p => {
+            if (p === planet) return;
+            if (p.owner === planet.owner) return;
+            const d = distance(planet, p);
+            if (d < minDist) {
+              minDist = d;
+              target = p;
+            }
+          });
+          if (target) {
+            createFleet(planet, target);
+          }
+        }
+      });
+    }
+
+    /**
+     * Handles mouse click events for player moves.
+     * A click on a blue (player) planet selects it.
+     * If a planet is already selected, a click on a target planet sends a fleet.
+     *
+     * @param {MouseEvent} event - The mouse click event.
+     */
+    canvas.addEventListener('click', function(event) {
+      const rect = canvas.getBoundingClientRect();
+      const clickPos = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+      for (let planet of planets) {
+        if (distance(clickPos, planet) <= planet.radius) {
+          if (planet.owner === 'blue') {
+            selectedPlanet = planet;
+          } else if (selectedPlanet && selectedPlanet.owner === 'blue') {
+            createFleet(selectedPlanet, planet);
+            selectedPlanet = null;
+          }
+          return;
+        }
+      }
+      selectedPlanet = null;
+    });
+
+    /**
+     * The main game loop: updates game state and renders the scene.
+     *
+     * @param {number} currentTime - Timestamp provided by requestAnimationFrame.
+     */
+    function gameLoop(currentTime) {
+      const deltaTime = (currentTime - lastUpdateTime) / 1000;
+      lastUpdateTime = currentTime;
+
+      updatePlanets(deltaTime);
+      updateFleets(deltaTime);
+      processAIMoves(deltaTime);
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawPlanets();
+      drawFleets();
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Start the game.
+    initGame();
+    requestAnimationFrame(gameLoop);
+  </script>
+</body>
+</html>
