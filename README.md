@@ -4,7 +4,7 @@
 [![Python Version](https://img.shields.io/badge/Python-3.10-blue.svg)](https://www.python.org/downloads/)
 [![GitHub issues](https://img.shields.io/github/issues/hseitaj/Mini-Games)](https://github.com/hseitaj/Mini-Games/issues)
 
-**Visit our website: [Mini Games Portal](https://hseitaj.github.io/Mini-Games/)**
+**Visit our website: [Mini Games Portal](https://hseitaj.github.io/Mini-Games/)** (under construction)
 
 ---
 
